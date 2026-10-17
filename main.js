@@ -5,7 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
-const MOD_VERSION = '7';
+const MOD_VERSION = '8';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;
@@ -28,6 +28,7 @@ const defaultHotkeys = {
   airjumps: 'F4',
   nokill: 'F5',
   ghost: 'F6',
+  free: 'Shift+F5',
   slowmo: 'F7',
   save1: 'F8',
   load1: 'F9',
@@ -291,8 +292,8 @@ function writeCmd() {
   const c = store.cfg || {};
   const lines = [];
   const b = (x) => (x ? '1' : '0');
-  for (const k of ['god', 'nocd', 'infmeter', 'airjumps', 'nokill', 'ghost', 'freeze', 'fevercam', 'spin']) lines.push(`${k}=${b(c[k])}`);
-  for (const k of ['pspeed', 'wspeed', 'jump', 'grav', 'air', 'scale']) lines.push(`${k}=${Number(c[k] ?? 1)}`);
+  for (const k of ['god', 'nocd', 'infmeter', 'airjumps', 'nokill', 'ghost', 'free', 'freeze', 'fevercam', 'spin']) lines.push(`${k}=${b(c[k])}`);
+  for (const k of ['pspeed', 'wspeed', 'jump', 'grav', 'air', 'scale', 'fly']) lines.push(`${k}=${Number(c[k] ?? 1)}`);
   lines.push(`fov=${Number(c.fov ?? 0)}`);
   for (const [key, val] of Object.entries(c.locks || {})) lines.push(`lock=${key}|${val}`);
   const now = Date.now();

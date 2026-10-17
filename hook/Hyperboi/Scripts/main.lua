@@ -7,12 +7,13 @@ local statePath = bridgeDir .. "/state.txt"
 package.path = modDir .. "/Scripts/?.lua;" .. package.path
 local maps = require("maps")
 local menu = require("menu")
+local free = require("free")
 local mapKill = false
 
 local cfg = {
     god = false, nocd = false, infmeter = false, airjumps = false, nokill = false, ghost = false,
     pspeed = 1.0, wspeed = 1.0, jump = 1.0, grav = 1.0, air = 1.0,
-    scale = 1.0, fov = 0, fevercam = false, freeze = false, spin = false,
+    scale = 1.0, fov = 0, fevercam = false, freeze = false, spin = false, free = false, fly = 1.0,
 }
 local freezeAt = nil
 local fovTouched = false
@@ -208,6 +209,10 @@ local function applyHeuristics(o, list)
             if cfg.nocd then
                 if type(e.v) == "number" and not isMax and isAny(n, cdPats) and (e.t == "FloatProperty" or e.t == "DoubleProperty") then
                     if e.v ~= 0 then setv(obj, e.name, 0) end
+                    touch("nocd", e.name)
+                elseif type(e.v) == "number" and not isMax and isAny(n, canPats) and (e.t == "FloatProperty" or e.t == "DoubleProperty" or e.t == "IntProperty") then
+                    local target = math.max(1, b[key] or 1)
+                    if e.v < target then setv(obj, e.name, target) end
                     touch("nocd", e.name)
                 elseif type(e.v) == "boolean" and isAny(n, canPats) and not n:find("debug") then
                     if e.v ~= true then setv(obj, e.name, true) end
@@ -536,7 +541,7 @@ end
 local function writeState(o, status)
     local L = {}
     table.insert(L, "status=" .. status)
-    table.insert(L, "ver=7")
+    table.insert(L, "ver=8")
     table.insert(L, "tick=" .. tick)
     table.insert(L, "clock=" .. string.format("%.2f", os.clock()))
     if o.char then
@@ -610,6 +615,15 @@ local function step()
     if o.char then
         handleEvents(o)
         applyMovement(o)
+        if cfg.nocd then
+            local tp = safe(function() return o.char.CanTeleport end)
+            if type(tp) == "number" and tp < 1 then
+                setv(o.char, "CanTeleport", 1)
+                local hud = safe(function() return o.char.HUDHealth end)
+                if valid(hud) then safe(function() hud:UpdateSpecial(1) end) end
+                touch("nocd", "CanTeleport")
+            end
+        end
         if tick % 4 == 0 then
             vars = scanVars(o)
             applyHeuristics(o, vars)
@@ -670,6 +684,11 @@ local function frame()
     busy = true
     local ok, err = pcall(maps.tick)
     if not ok then report("maps: ", err) end
+    if cfg.free or free.active() then
+        local ch = safe(function() return FindFirstOf("BP_ThirdPersonCharacter_C") end)
+        ok, err = pcall(free.tick, valid(ch) and ch or nil, cfg.free, cfg.fly)
+        if not ok then report("free: ", err) end
+    end
     local now = os.clock()
     if now - lastStep >= 0.045 or now < lastStep then
         lastStep = now

@@ -8,6 +8,7 @@ const ICONS = {
   wing: '<path d="M3 17c6 0 9-3 11-8 1.5 3 4 5 7 5-2 3-6 5-11 5-3 0-5-1-7-2z"/><path d="M14 9c-1-3-3-5-6-6"/>',
   skull: '<path d="M12 2a8 8 0 00-5 14.2V20h10v-3.8A8 8 0 0012 2z"/><circle cx="9" cy="11" r="1.6" fill="currentColor"/><circle cx="15" cy="11" r="1.6" fill="currentColor"/><path d="M10 20v-2M14 20v-2"/>',
   ghost: '<path d="M5 21V10a7 7 0 0114 0v11l-2.3-2-2.4 2-2.3-2-2.3 2-2.4-2z"/><circle cx="9.5" cy="10" r="1" fill="currentColor"/><circle cx="14.5" cy="10" r="1" fill="currentColor"/>',
+  cloud: '<path d="M7 18h10a4 4 0 000-8 6 6 0 00-11.3 1.7A3.2 3.2 0 007 18z"/><path d="M9 21.5c1-.6 2-.6 3 0s2 .6 3 0"/>',
   snow: '<path d="M12 2v20M4.9 6.9l14.2 10.2M19.1 6.9L4.9 17.1M9 3l3 3 3-3M9 21l3-3 3 3"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/>',
   spiral: '<path d="M12 12a1.5 1.5 0 113 0 3.5 3.5 0 01-7 0 5.5 5.5 0 0111 0 7.5 7.5 0 01-15 0A9.5 9.5 0 0121.5 12"/>',
@@ -35,6 +36,7 @@ const CHEATS = [
   { id: 'infmeter', name: 'Infinite meter', icon: 'battery', desc: 'Stamina, energy and boost style bars stay full.' },
   { id: 'airjumps', name: 'Infinite air jumps', icon: 'wing', desc: 'Jump as many times as you want in the air.' },
   { id: 'nokill', name: 'No kill zones', icon: 'skull', desc: 'Kill zones stop resetting you, so you can fall anywhere.' },
+  { id: 'free', name: 'Freemode', icon: 'cloud', desc: 'Fly anywhere like creative mode, floating while you hover. Space up, Alt down, Shift for fast.' },
   { id: 'ghost', name: 'Ghost mode', icon: 'ghost', desc: 'Turns off collision so you fly through walls and floors.' },
   { id: 'freeze', name: 'Freeze in place', icon: 'snow', desc: 'Holds you where you are, even mid-air.' },
   { id: 'fevercam', name: 'Fever cam', icon: 'eye', desc: 'Field of view swells in and out on its own.' },
@@ -48,6 +50,7 @@ const SLIDERS = [
   { id: 'grav', name: 'Gravity', min: -1, max: 3, step: 0.05, def: 1, q: [0, 1, 2], fmt: (v) => v.toFixed(2) + 'x', desc: 'Below zero and you fall up.' },
   { id: 'air', name: 'Air control', min: 0, max: 6, step: 0.05, def: 1, q: [0.5, 1, 3], fmt: (v) => v.toFixed(2) + 'x', desc: 'How much you can steer in the air.' },
   { id: 'scale', name: 'Size', min: 0.2, max: 5, step: 0.05, def: 1, q: [0.5, 1, 2], fmt: (v) => v.toFixed(2) + 'x', desc: 'Shrink down or get huge.' },
+  { id: 'fly', name: 'Fly speed', min: 0.25, max: 5, step: 0.05, def: 1, q: [0.5, 1, 3], fmt: (v) => v.toFixed(2) + 'x', desc: 'How fast Freemode flies you around.' },
   { id: 'fov', name: 'Field of view', min: 50, max: 150, step: 1, def: 50, q: [50, 90, 120], fmt: (v) => (v <= 50 ? 'Game' : v + '°'), desc: 'Zoom out to see more of the course.' }
 ];
 
@@ -81,6 +84,7 @@ const HK_LABELS = {
   airjumps: 'Infinite air jumps',
   nokill: 'No kill zones',
   ghost: 'Ghost mode',
+  free: 'Freemode',
   slowmo: 'Slow motion',
   save1: 'Save spot 1',
   load1: 'Warp to spot 1',
@@ -103,7 +107,7 @@ const GEMS = [
 const MODES = { 0: 'None', 1: 'On the ground', 2: 'On the ground', 3: 'In the air', 4: 'Swimming', 5: 'Flying', 6: 'Special move' };
 const OWNERS = { char: 'You', cmc: 'Movement', ctrl: 'Controller', mode: 'Game mode', inst: 'Game' };
 
-const defaults = () => ({ god: false, nocd: false, infmeter: false, airjumps: false, nokill: false, ghost: false, freeze: false, fevercam: false, spin: false, pspeed: 1, wspeed: 1, jump: 1, grav: 1, air: 1, scale: 1, fov: 0, locks: {} });
+const defaults = () => ({ god: false, nocd: false, infmeter: false, airjumps: false, nokill: false, ghost: false, free: false, freeze: false, fevercam: false, spin: false, pspeed: 1, fly: 1, wspeed: 1, jump: 1, grav: 1, air: 1, scale: 1, fov: 0, locks: {} });
 
 let info = null;
 let cfg = defaults();
