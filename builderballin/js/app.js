@@ -9,6 +9,8 @@ import { evalAnim } from './anim.js';
 import { MESHES } from './meshes.js';
 import { animate, fadeIn, SPRINGS, Spring, springCurve } from './spring.js';
 import { TEMPLATES } from './templates.js';
+import { loadSource, buildAsset, DEFAULTS, ACCEPT } from './importers.js';
+import { assetCount } from './voxels.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -28,6 +30,7 @@ const ICON = {
 };
 
 const STORE_KEY = 'builderballin:map';
+const LIB_KEY = 'builderballin:imports';
 const PREFS_KEY = 'builderballin:prefs';
 
 const state = {
@@ -47,6 +50,7 @@ const state = {
   clipboard: null,
   history: [],
   future: [],
+  importRef: null,
   openSecs: JSON.parse(localStorage.getItem('builderballin:secs') || '{}')
 };
 
@@ -332,6 +336,74 @@ function partMesh(shape, color, opts, edges = true, mat = null, size = null) {
   return g;
 }
 
+let library = readLib();
+function readLib() {
+  try {
+    const l = JSON.parse(localStorage.getItem(LIB_KEY) || '[]');
+    return Array.isArray(l) ? l.filter((x) => x && x.ref && x.asset) : [];
+  } catch {
+    return [];
+  }
+}
+function saveLib(ref, asset) {
+  let lib = [{ ref, asset }, ...library.filter((x) => x.ref !== ref)].slice(0, 16);
+  library = lib;
+  while (lib.length) {
+    try {
+      localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+      return;
+    } catch {
+      lib = lib.slice(0, -1);
+    }
+  }
+}
+function assetFor(ref) {
+  if (!ref) return null;
+  return (state.map && state.map.assets && state.map.assets[ref]) || library.find((x) => x.ref === ref)?.asset || null;
+}
+const instMats = new Map();
+function instMat({ ghost = false, faded = false, ice = false } = {}) {
+  const key = `${ghost}|${faded}|${ice}`;
+  if (instMats.has(key)) return instMats.get(key);
+  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: ice ? 0.15 : 0.75, metalness: ice ? 0.2 : 0, envMapIntensity: 0.7 });
+  if (ghost || faded) {
+    m.transparent = true;
+    m.opacity = ghost ? 0.5 : 0.28;
+    m.depthWrite = !ghost;
+  }
+  instMats.set(key, m);
+  return m;
+}
+const IMPORT_EDGE = new THREE.LineBasicMaterial({ color: '#b9b2f2', transparent: true, opacity: 0.28 });
+function assetMesh(a, opts = {}) {
+  const g = new THREE.Group();
+  const n = assetCount(a);
+  if (!n) return g;
+  const mesh = new THREE.InstancedMesh(GEO.cube, instMat(opts), n);
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const c = new THREE.Color();
+  const b = a.boxes;
+  for (let i = 0; i < n; i++) {
+    const k = i * 7;
+    m4.compose(toThree([b[k], b[k + 1], b[k + 2]]), q, scaleToThree([b[k + 3] / 100, b[k + 4] / 100, b[k + 5] / 100]));
+    mesh.setMatrixAt(i, m4);
+    mesh.setColorAt(i, c.set(a.palette[b[k + 6]] || '#9a9a96'));
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  mesh.castShadow = !opts.ghost && !opts.faded;
+  mesh.receiveShadow = true;
+  g.add(mesh);
+  const sz = a.size || [100, 100, 100];
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(sz[0], sz[2], sz[1])), IMPORT_EDGE);
+  e.position.copy(toThree([0, 0, sz[2] / 2]));
+  e.userData.edge = true;
+  g.add(e);
+  return g;
+}
+
 function setLocal(o3, pos, rot, scale) {
   o3.position.copy(toThree(pos));
   o3.quaternion.copy(quatFromRot(rot));
@@ -517,6 +589,14 @@ function buildVisual(obj, ghost = false) {
     e.scale.copy(m.scale);
     e.position.copy(m.position);
     root.add(m, e);
+  } else if (piece.kind === 'import') {
+    const a = assetFor(obj.p && obj.p.ref);
+    if (a) root.add(assetMesh(a, opts));
+    else {
+      const pm = partMesh('cube', '#ff5a4a', { ghost: true });
+      pm.scale.setScalar(20);
+      root.add(pm);
+    }
   } else if (piece.kind === 'decor') {
     const prm = { ...defaultParams(piece), ...obj.p };
     if (piece.decor === 'text') {
@@ -744,7 +824,7 @@ function drawMotionPath() {
 }
 
 function snapshot() {
-  return JSON.stringify(state.map);
+  return JSON.stringify(state.map, (k, v) => (k === 'assets' ? undefined : v));
 }
 
 function commit(label) {
@@ -774,7 +854,9 @@ function redo() {
 }
 
 function restore(snap) {
+  const assets = state.map.assets || {};
   state.map = JSON.parse(snap);
+  state.map.assets = assets;
   const keep = [...state.selected].filter((id) => obj(id));
   rebuildAll();
   state.selected = new Set();
@@ -796,7 +878,7 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORE_KEY, snapshot());
+      localStorage.setItem(STORE_KEY, JSON.stringify(state.map));
       $('#savedText').textContent = 'Saved';
     } catch {
       $('#savedText').textContent = 'Not saved';
@@ -881,7 +963,7 @@ function setBrush(id) {
     scene.remove(ghost);
     ghost = null;
   }
-  $$('.piece').forEach((p) => p.classList.toggle('on', p.dataset.id === id));
+  $$('.piece').forEach((p) => p.classList.toggle('on', p.dataset.id === id && (id !== 'import' || p.dataset.ref === state.importRef)));
   const bar = $('#placing');
   if (!id) {
     bar.hidden = true;
@@ -890,6 +972,7 @@ function setBrush(id) {
     return;
   }
   const temp = newObject(id, [0, 0, 0]);
+  if (id === 'import') temp.p.ref = state.importRef;
   ghost = buildVisual(temp, true);
   applyBase(temp, ghost);
   ghost.position.set(0, 0, 0);
@@ -898,7 +981,7 @@ function setBrush(id) {
   ghost.visible = false;
   scene.add(ghost);
   ghostTarget = null;
-  $('#placingName').textContent = `Placing ${PIECE[id].name}`;
+  $('#placingName').textContent = `Placing ${id === 'import' ? assetFor(state.importRef)?.name || 'import' : PIECE[id].name}`;
   bar.hidden = false;
   fadeIn(bar, { y: 10, spring: SPRINGS.bouncy });
   updatePlaceHeight();
@@ -957,6 +1040,14 @@ function placeAt(p) {
     }
   }
   const o = newObject(id, pos);
+  if (id === 'import') {
+    o.p.ref = state.importRef;
+    const a = assetFor(state.importRef);
+    if (!a) return null;
+    state.map.assets = state.map.assets || {};
+    if (!state.map.assets[state.importRef]) state.map.assets[state.importRef] = a;
+    o.name = a.name;
+  }
   if (id === 'checkpoint') o.p.order = state.map.objects.filter((x) => x.piece === 'checkpoint').length + 1;
   state.map.objects.push(o);
   const r = rebuildObject(o);
@@ -1428,6 +1519,7 @@ function buildTray() {
 const thumbs = new Map();
 function renderPieces(anim) {
   const q = $('#pieceSearch').value.trim().toLowerCase();
+  if (state.cat === 'import' && !q) return renderImportTray(anim);
   const list = PIECES.filter((p) => !p.hidden && (q ? p.name.toLowerCase().includes(q) || (p.desc || '').toLowerCase().includes(q) : p.cat === state.cat));
   const box = $('#pieces');
   box.innerHTML = list.length
@@ -1441,10 +1533,250 @@ function renderPieces(anim) {
   });
 }
 
+function renderImportTray(anim) {
+  const box = $('#pieces');
+  const inMap = Object.entries(state.map?.assets || {}).map(([ref, asset]) => ({ ref, asset }));
+  const seen = new Set(inMap.map((x) => x.ref));
+  const list = [...inMap, ...library.filter((x) => !seen.has(x.ref))];
+  box.innerHTML = `<button class="import-drop" id="importPick"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4"/></svg><b>Bring in a file</b><span>PNG, Minecraft build, .vox or a 3D model. You can also just drop it on the map.</span></button>${list
+    .map(({ ref, asset }) => `<button class="piece ${state.brush === 'import' && state.importRef === ref ? 'on' : ''}" data-id="import" data-ref="${esc(ref)}" title="${esc(asset.name)}">${asset.thumb ? `<img alt="" src="${asset.thumb}">` : '<div class="thumb-wait"></div>'}<span>${esc(asset.name)}</span><i class="tag">${assetCount(asset)}</i></button>`)
+    .join('')}${list.length ? '' : '<p class="hint import-empty">Nothing imported yet. Pixel art, a Minecraft house, a model off Sketchfab, all of it turns into blocks that show up in game.</p>'}`;
+  $('#importPick', box).addEventListener('click', () => $('#importInput').click());
+  $$('.piece', box).forEach((b, i) => {
+    b.addEventListener('click', () => {
+      if (state.brush === 'import' && state.importRef === b.dataset.ref) return setBrush(null);
+      state.importRef = b.dataset.ref;
+      setBrush('import');
+    });
+    b.addEventListener('mouseenter', () => {
+      const a = assetFor(b.dataset.ref);
+      if (a) $('#trayNote').textContent = `${a.name}. ${assetCount(a)} blocks, ${a.size.map((v) => round2(v / M)).join(' × ')} m.`;
+    });
+    b.addEventListener('mouseleave', () => updateTrayNote());
+    if (anim) animate(b, { opacity: [0, 1], transform: ['translateY(10px) scale(0.96)', 'none'] }, { spring: SPRINGS.bouncy, delay: i * 22 });
+  });
+}
+
+function showImports() {
+  state.cat = 'import';
+  $('#pieceSearch').value = '';
+  $$('#cats button').forEach((x) => x.classList.toggle('on', x.dataset.cat === 'import'));
+  renderPieces(true);
+  savePrefs();
+}
+
+function importStats(a) {
+  const n = assetCount(a);
+  const dims = a.size.map((v) => round2(v / M)).join(' × ');
+  return { n, text: `${n.toLocaleString()} blocks in game, ${a.palette.length} colours, ${dims} m`, heavy: n > 3000 };
+}
+
+async function importModal(files) {
+  let src;
+  const t = setTimeout(() => toast('Reading the file'), 400);
+  try {
+    src = await loadSource(files);
+  } catch (e) {
+    clearTimeout(t);
+    toast(e.message || "Couldn't read that file.", true);
+    return;
+  }
+  clearTimeout(t);
+  const opt = { ...DEFAULTS[src.kind], ...(src.kind === 'minecraft' || src.kind === 'vox' ? { colors: 64 } : {}) };
+  const body = html(`<div class="imp"><div class="imp-view"><canvas></canvas><div class="imp-busy" hidden>Working on it</div></div><div class="imp-side"><div class="imp-opts"></div><p class="imp-stat"></p></div></div>`);
+  let asset = null;
+  let busy = false;
+  let again = false;
+  let preview = null;
+  const opts = $('.imp-opts', body);
+  const stat = $('.imp-stat', body);
+  const rebuild = () => {
+    if (busy) {
+      again = true;
+      return;
+    }
+    busy = true;
+    $('.imp-busy', body).hidden = false;
+    setTimeout(() => {
+      try {
+        asset = buildAsset(src, opt);
+        const st = importStats(asset);
+        stat.textContent = st.text + (st.heavy ? '. That is a lot of parts, the game takes longer to load it. Lower the detail or colours if it lags.' : '.');
+        stat.classList.toggle('warn', st.heavy);
+        if (preview) preview.show(asset);
+      } catch (e) {
+        asset = null;
+        stat.textContent = e.message || 'That did not work.';
+        stat.classList.add('warn');
+        if (preview) preview.show(null);
+      }
+      $('.imp-busy', body).hidden = true;
+      busy = false;
+      if (again) {
+        again = false;
+        rebuild();
+      }
+    }, 30);
+  };
+  let timer = null;
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(rebuild, 140);
+  };
+  const metres = (label, key, min, max, step) => sliderRow({ label, value: opt[key] / M, min, max, step, unit: 'm', onInput: (v) => {
+    opt[key] = v * M;
+    later();
+  }, onCommit: () => {} });
+  const count = (label, key, min, max, step = 1) => sliderRow({ label, value: opt[key], min, max, step, onInput: (v) => {
+    opt[key] = Math.round(v);
+    later();
+  }, onCommit: () => {} });
+  const tick = (label, key) => checkRow(label, opt[key], (v) => {
+    opt[key] = v;
+    later();
+  });
+  const fill = () => {
+    opts.innerHTML = '';
+    if (src.kind === 'image') {
+      opts.appendChild(row('Make it', chipsEl([['wall', 'Standing'], ['floor', 'Flat'], ['height', 'Terrain']], opt.mode, (v) => {
+        opt.mode = v;
+        fill();
+        later();
+      })));
+      opts.appendChild(count('Detail', 'res', 8, 160));
+      opts.appendChild(metres('Pixel size', 'pixel', 0.5, 20, 0.5));
+      if (opt.mode === 'height') opts.appendChild(metres('Tallest', 'height', 5, 400, 1));
+      else opts.appendChild(metres('Thickness', 'depth', 0.5, 20, 0.5));
+      opts.appendChild(count('Colours', 'colors', 2, 64));
+      opts.appendChild(html(`<p class="hint">${opt.mode === 'height' ? 'Brighter pixels go higher. Good for hills out of a grayscale image.' : 'Clear pixels are skipped, so a PNG with a see-through background comes out as just the shape.'}</p>`));
+    } else if (src.kind === 'minecraft') {
+      opts.appendChild(metres('Block size', 'block', 1, 30, 0.5));
+      opts.appendChild(count('Colours', 'colors', 2, 64));
+      opts.appendChild(tick('Fill the inside', 'solid'));
+      opts.appendChild(tick('Keep water and lava', 'fluids'));
+      opts.appendChild(html(`<p class="hint">A Minecraft block is 1 m, but marbles here are ${round2((MARBLE_R * 2) / M)} m across, so 5 m blocks feel about right. Torches, flowers, doors and signs are left out.</p>`));
+    } else if (src.kind === 'vox') {
+      opts.appendChild(metres('Voxel size', 'block', 0.5, 30, 0.5));
+      opts.appendChild(count('Colours', 'colors', 2, 64));
+      opts.appendChild(tick('Fill the inside', 'solid'));
+    } else {
+      opts.appendChild(count('Detail', 'res', 8, 128));
+      opts.appendChild(metres('Size', 'size', 10, 2000, 5));
+      opts.appendChild(count('Colours', 'colors', 2, 64));
+      opts.appendChild(row('Up is', chipsEl([['y', 'Y'], ['z', 'Z']], opt.up, (v) => {
+        opt.up = v;
+        later();
+      })));
+      opts.appendChild(tick('Fill the inside', 'solid'));
+      opts.appendChild(html('<p class="hint">Models get turned into blocks so they show up in game. More detail looks closer to the model but makes more parts. For an .obj, drop its .mtl and textures in with it to keep the colours.</p>'));
+    }
+  };
+  fill();
+  modal({
+    title: `Import ${src.name}`,
+    body,
+    wide: true,
+    foot: '<button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="impGo">Add to map</button>',
+    onMount: (el, close) => {
+      preview = importPreview($('canvas', el));
+      rebuild();
+      $('#impGo', el).addEventListener('click', () => {
+        if (!asset) return;
+        const ref = uid();
+        asset.thumb = preview.thumb();
+        state.map.assets = state.map.assets || {};
+        state.map.assets[ref] = asset;
+        saveLib(ref, asset);
+        scheduleSave();
+        close();
+        state.importRef = ref;
+        showImports();
+        setBrush('import');
+        toast(`${asset.name} is ready. Click to place it`);
+      });
+    }
+  });
+}
+
+function importPreview(cv) {
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  const sc2 = new THREE.Scene();
+  sc2.background = new THREE.Color('#1f1c38');
+  sc2.environment = makeEnvironment(r);
+  sc2.add(new THREE.HemisphereLight('#f1edff', '#4a4380', 1.4));
+  const dl = new THREE.DirectionalLight('#ffe6cc', 2.2);
+  dl.position.set(2, 4, 3);
+  sc2.add(dl);
+  const cam = new THREE.PerspectiveCamera(35, 1, 10, 1e7);
+  const ctl = new OrbitControls(cam, cv);
+  ctl.enableDamping = true;
+  ctl.autoRotate = true;
+  ctl.autoRotateSpeed = 1.2;
+  let holder = null;
+  let framed = false;
+  const size = () => {
+    const w = cv.clientWidth || 400;
+    const h = cv.clientHeight || 300;
+    r.setSize(w, h, false);
+    cam.aspect = w / h;
+    cam.updateProjectionMatrix();
+  };
+  const show = (a) => {
+    if (holder) sc2.remove(holder);
+    holder = null;
+    if (!a) return;
+    holder = assetMesh(a);
+    holder.children.forEach((c) => c.userData.edge && (c.visible = false));
+    sc2.add(holder);
+    const box = new THREE.Box3().setFromObject(holder);
+    const c = box.getCenter(new THREE.Vector3());
+    const rad = Math.max(1, box.getSize(new THREE.Vector3()).length() / 2);
+    const dir = framed ? cam.position.clone().sub(ctl.target) : new THREE.Vector3(1, 0.75, 1.15);
+    framed = true;
+    ctl.target.copy(c);
+    cam.position.copy(c).add(dir.normalize().multiplyScalar((rad / Math.sin((35 * Math.PI) / 360)) * 0.9));
+    cam.near = rad / 100;
+    cam.far = rad * 100;
+    cam.updateProjectionMatrix();
+  };
+  const frame = () => {
+    if (!cv.isConnected) {
+      ctl.dispose();
+      r.dispose();
+      return;
+    }
+    size();
+    ctl.update();
+    r.render(sc2, cam);
+    requestAnimationFrame(frame);
+  };
+  size();
+  requestAnimationFrame(frame);
+  const thumb = () => {
+    const t = document.createElement('canvas');
+    t.width = 200;
+    t.height = 150;
+    const g = t.getContext('2d');
+    r.render(sc2, cam);
+    const w = cv.width;
+    const h = cv.height;
+    const s = Math.min(w / 4, h / 3);
+    g.drawImage(cv, (w - s * 4) / 2, (h - s * 3) / 2, s * 4, s * 3, 0, 0, 200, 150);
+    return t.toDataURL('image/jpeg', 0.82);
+  };
+  return { show, thumb };
+}
+
 function updateTrayNote(hover) {
   const p = hover || (state.brush && PIECE[state.brush]);
   const note = $('#trayNote');
-  if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}${MODELS[p.id] ? 'Shape and size come straight from the game files.' : `The real one spawns in game. The box here is its size${p.approx ? ', roughly' : ''}.`}` : `${p.name}. ${p.desc || ''}`;
+  if (p && p.kind === 'import') {
+    const a = assetFor(state.importRef);
+    note.textContent = a ? `${a.name}. ${assetCount(a)} blocks. Click to place, it scales like any other piece.` : 'Imported build.';
+  } else if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}${MODELS[p.id] ? 'Shape and size come straight from the game files.' : `The real one spawns in game. The box here is its size${p.approx ? ', roughly' : ''}.`}` : `${p.name}. ${p.desc || ''}`;
   else note.textContent = 'Floors hurt in Hyperballin, marbles don\'t. Pick a piece, click to place it, drag to paint. Right-drag orbits, middle-drag pans.';
 }
 
@@ -1773,7 +2105,7 @@ function renderSelPanel(ins, sel) {
     }, onCommit: () => commit('Rotate') }));
     if (fixedScale(piece)) {
       if (piece.kind === 'marble' || piece.kind === 'marbles') tf.push(html(`<p class="hint">Marbles are always ${round2((MARBLE_R * 2) / M)} m across, same as in the game. Only the colour changes.</p>`));
-    } else if (piece.kind === 'smart' || piece.kind === 'game') {
+    } else if (piece.kind === 'smart' || piece.kind === 'game' || piece.kind === 'import') {
       tf.push(vecRow('Scale', one.scale, { step: 0.05, onInput: (i, v) => {
         one.scale[i] = v;
         refreshVisuals(false);
@@ -1785,6 +2117,10 @@ function renderSelPanel(ins, sel) {
         updateRealSize();
         tf.push(real);
         var updateRealSizeRef = updateRealSize;
+      }
+      if (piece.kind === 'import') {
+        const a = assetFor(one.p.ref);
+        if (a) tf.push(html(`<p class="hint">${assetCount(a).toLocaleString()} blocks in game. ${a.size.map((v, i) => round2((v * Math.abs(one.scale[i])) / M)).join(' × ')} m at this scale.</p>`));
       }
     } else {
       tf.push(vecRow('Size', one.scale.map((s) => (s * 100) / M), { step: state.snap ? state.grid / 4 / M : 1, unit: 'm', axes: ['L', 'W', 'H'], onInput: (i, v) => {
@@ -2602,9 +2938,18 @@ function wire() {
     e.preventDefault();
     dragDepth = 0;
     $('#drop').hidden = true;
-    const f = e.dataTransfer.files[0];
-    if (f) openFile(f);
+    const files = [...e.dataTransfer.files];
+    if (!files.length) return;
+    if (files.length === 1 && /\.(hbmap|json)$/i.test(files[0].name)) openFile(files[0]);
+    else importModal(files);
   });
+  $('#importInput').accept = ACCEPT;
+  $('#importInput').addEventListener('change', (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    if (files.length) importModal(files);
+  });
+  $('#importBtn').addEventListener('click', () => $('#importInput').click());
 }
 
 function playIntro() {

@@ -1,4 +1,5 @@
 import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R, speedRange, DOMINUS } from './pieces.js';
+import { assetParts } from './voxels.js';
 import { axesFromRot, rotFromAxes, applyAxes, composeAxes, add, hadamard } from './ue.js';
 
 export const FORMAT = 'builderballin';
@@ -17,6 +18,7 @@ export function blankMap() {
     version: VERSION,
     meta: { name: 'Untitled map', author: '', description: '', difficulty: 'Easy', gems: { diamond: 0, emerald: 0, gold: 0, steel: 0, rock: 0 }, created: Date.now(), updated: Date.now() },
     rules: { gravity: 1, speed: 1, jump: 1, killHeight: -60000, needCheckpoints: false, timeLimit: 0 },
+    assets: {},
     objects: []
   };
 }
@@ -163,7 +165,7 @@ export function flatten(map) {
       else build.parts.push({ ...common, kind: 'light', intensity: prm.intensity, radius: prm.radius, pos: o.pos.slice(), rot: [0, 0, 0], scale: [1, 1, 1], color: o.color });
       continue;
     }
-    const parts = localParts(o);
+    const parts = piece.kind === 'import' ? (map.assets && map.assets[o.p.ref] ? assetParts(map.assets[o.p.ref]) : []) : localParts(o);
     parts.forEach((lp, i) => {
       const la = axesFromRot(lp.rot);
       const wa = composeAxes(axes, la);
@@ -175,7 +177,7 @@ export function flatten(map) {
         pos: add(o.pos, applyAxes(axes, hadamard(lp.pos, o.scale))),
         rot: rotFromAxes(wa),
         scale: hadamard(lp.scale, o.scale),
-        color: o.color,
+        color: lp.color || o.color,
         mat: lp.mat || (o.look.wood ? 'wood' : null),
         ice: o.look.ice,
         hidden: !o.look.visible,
@@ -219,6 +221,7 @@ export function importMap(text) {
     ...data,
     meta: { ...base.meta, ...data.meta, gems: { ...base.meta.gems, ...(data.meta && data.meta.gems) } },
     rules: { ...base.rules, ...data.rules },
+    assets: { ...(data.assets || {}) },
     objects: (data.objects || []).map((o) => (o.piece === 'g_marble' ? { ...o, piece: 'marble', scale: [1, 1, 1], p: {} } : o)).filter((o) => PIECE[o.piece]).map((o) => ({ ...newObject(o.piece, o.pos || [0, 0, 0]), ...o, look: { ice: false, visible: true, collide: true, ...o.look } }))
   };
   map.version = VERSION;
@@ -236,10 +239,11 @@ export function validate(map) {
   const kinds = map.objects.map((o) => PIECE[o.piece].kind);
   if (!kinds.some((k) => k === 'marble' || k === 'marbles' || k === 'spawner')) issues.push({ level: 'warn', text: 'No marbles yet. Floors hurt in Hyperballin, so you need marbles to ride.', fix: 'marble_line', cat: 'marbles' });
   const rollers = map.objects.filter((o) => (PIECE[o.piece].kind === 'spawner' || PIECE[o.piece].kind.startsWith('marble')) && (o.p.mode ?? PIECE[o.piece].params.find((x) => x.key === 'mode')?.def) === 'roll');
-  if (rollers.length && !kinds.some((k) => k === 'smart' || k === 'solid' || k === 'game')) issues.push({ level: 'warn', text: 'Some marbles roll but there is nothing under them. Add a track or switch them to Floats.', fix: 'track', cat: 'track' });
+  if (rollers.length && !kinds.some((k) => k === 'smart' || k === 'solid' || k === 'game' || k === 'import')) issues.push({ level: 'warn', text: 'Some marbles roll but there is nothing under them. Add a track or switch them to Floats.', fix: 'track', cat: 'track' });
   const ids = new Set(map.objects.map((o) => o.id));
   for (const o of map.objects) {
     if (o.piece === 'teleport' && !ids.has(o.p.exit)) issues.push({ level: 'warn', text: `${o.name || 'A teleporter'} has no exit.`, id: o.id });
+    if (o.piece === 'import' && !(map.assets && map.assets[o.p.ref])) issues.push({ level: 'warn', text: `${o.name || 'An imported build'} lost its file data. Delete it and import it again.`, id: o.id });
     if (o.anim && o.anim.start === 'trigger' && !map.objects.some((t) => t.piece === 'trigger' && (t.p.channel || 'A') === (o.anim.channel || 'A'))) issues.push({ level: 'warn', text: `${o.name || PIECE[o.piece].name} waits for channel ${o.anim.channel}, but no trigger sends it.`, id: o.id });
   }
   const fb = flatten(map);

@@ -285,6 +285,8 @@ export const PIECES = [
   { id: 'pillars', cat: 'blocks', name: 'Pillar row', kind: 'smart', color: '#9a9a96', desc: 'Row of columns', params: [num('count', 'Count', 2, 60, 6), len('spacing', 'Spacing', 500, 30000, 3500), len('height', 'Height', 500, 50000, 6000), len('diameter', 'Diameter', 200, 20000, 1800), len('step', 'Height step', -10000, 10000, 0)], build: (p) => Array.from({ length: p.count }, (_, i) => ({ kind: 'shape', shape: 'cylinder', pos: [i * p.spacing, 0, (p.height + i * p.step) / 2], rot: [0, 0, 0], scale: [p.diameter / 100, p.diameter / 100, (p.height + i * p.step) / 100] })) },
   { id: 'hoop', cat: 'blocks', name: 'Hoop', kind: 'smart', color: '#fff600', desc: 'Ring to fly through', params: [len('radius', 'Radius', 1000, 30000, 4000), num('sides', 'Sides', 6, 48, 20), len('thickness', 'Thickness', 100, 3000, 400, 50)], build: (p) => ringParts(p.radius, p.sides, p.thickness, p.thickness).map((q) => ({ ...q, pos: [0, q.pos[1], q.pos[2] - p.radius] })) },
 
+  { id: 'import', cat: 'import', name: 'Imported build', kind: 'import', hidden: true, color: '#b9b2f2', desc: 'Something you brought in from a file', params: [] },
+
   { id: 'sign', cat: 'decor', name: 'Sign', kind: 'decor', decor: 'text', color: '#dddaff', desc: 'Floating text', params: [{ key: 'text', label: 'Text', type: 'text', def: 'hello' }, len('height', 'Text size', 100, 20000, 3000, 50)] },
   { id: 'light', cat: 'decor', name: 'Light', kind: 'decor', decor: 'light', color: '#ffd9a0', desc: 'Coloured point light', params: [num('intensity', 'Brightness', 100, 2000000, 200000, 100), len('radius', 'Reach', 1000, 200000, 30000, 500)] }
 ];
@@ -297,7 +299,8 @@ export const CATS = [
   ['play', 'Gameplay'],
   ['game', 'Game parts'],
   ['blocks', 'Blocks'],
-  ['decor', 'Decor']
+  ['decor', 'Decor'],
+  ['import', 'Import']
 ];
 
 export function defaultParams(piece) {

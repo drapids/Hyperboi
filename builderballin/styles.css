@@ -1446,3 +1446,128 @@ kbd {
 * {
   scrollbar-color: var(--line-2) transparent;
 }
+
+.drop small {
+  display: block;
+  margin-top: 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.import-drop {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px 14px 16px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: 14px;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(95, 200, 255, 0.1), transparent 70%);
+  text-align: center;
+  transition: border-color 0.15s, background 0.2s, transform 0.4s var(--spring);
+}
+
+.import-drop:hover {
+  border-color: var(--cobalt);
+  transform: translateY(-2px);
+}
+
+.import-drop svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.import-drop b {
+  font-size: 14px;
+}
+
+.import-drop span {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.import-empty {
+  grid-column: 1 / -1;
+  margin: 2px 2px 0;
+  line-height: 1.5;
+}
+
+.imp {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.imp-view {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1f1c38;
+}
+
+.imp-view canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.imp-busy {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(20, 19, 42, 0.85);
+  color: var(--cobalt);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.imp-side {
+  display: grid;
+  gap: 10px;
+}
+
+.imp-opts {
+  display: grid;
+  gap: 8px;
+}
+
+.imp-opts .slider-row {
+  grid-template-columns: 74px 1fr 84px;
+}
+
+.imp-opts .row {
+  grid-template-columns: 74px 1fr;
+}
+
+.imp-stat {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.imp-stat.warn {
+  color: #ffd27a;
+}
+
+@media (max-width: 760px) {
+  .imp {
+    grid-template-columns: 1fr;
+  }
+}

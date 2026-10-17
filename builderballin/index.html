@@ -37,9 +37,11 @@
     <button class="btn ghost" id="helpBtn">Shortcuts</button>
     <button class="btn ghost" id="newBtn">New</button>
     <button class="btn ghost" id="openBtn">Open</button>
+    <button class="btn ghost" id="importBtn">Import</button>
     <button class="btn ghost" id="settingsBtn">Map settings</button>
     <button class="btn primary" id="exportBtn">Export map</button>
     <input type="file" id="fileInput" accept=".hbmap,.json,application/json" hidden>
+    <input type="file" id="importInput" multiple hidden>
   </header>
 
   <aside class="tray" data-enter>
@@ -65,7 +67,7 @@
       <span class="placing-height" id="placingHeight"></span>
     </div>
     <div class="marquee" id="marquee" hidden></div>
-    <div class="drop" id="drop" hidden><div>Drop a map file to open it</div></div>
+    <div class="drop" id="drop" hidden><div>Drop a map to open it<small>or a PNG, Minecraft build, .vox or 3D model to bring it in</small></div></div>
   </main>
 
   <aside class="inspector" id="inspector" data-enter></aside>
