@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const on = (ch, fn) => {
   const h = (_e, d) => fn(d);
@@ -25,5 +25,20 @@ contextBridge.exposeInMainWorld('hb', {
   miniData: (d) => ipcRenderer.send('miniData', d),
   win: (a) => ipcRenderer.send('win', a),
   external: (u) => ipcRenderer.invoke('external', u),
+  maps: {
+    list: () => ipcRenderer.invoke('maps:list'),
+    pick: () => ipcRenderer.invoke('maps:pick'),
+    add: (paths) => ipcRenderer.invoke('maps:add', paths),
+    remove: (f) => ipcRenderer.invoke('maps:remove', f),
+    folder: () => ipcRenderer.invoke('maps:folder'),
+    builder: () => ipcRenderer.invoke('maps:builder'),
+    pathFor: (file) => {
+      try {
+        return webUtils.getPathForFile(file);
+      } catch {
+        return file.path || '';
+      }
+    }
+  },
   on
 });

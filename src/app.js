@@ -23,6 +23,7 @@ const PAGES = [
   ['cheats', 'Cheats'],
   ['physics', 'Physics'],
   ['lab', 'Practice'],
+  ['maps', 'Maps'],
   ['binds', 'Controls'],
   ['guts', 'Variables'],
   ['setup', 'Setup']
@@ -154,7 +155,8 @@ function setBoard(el, text, flap = true) {
     el.textContent = text;
     return;
   }
-  el.innerHTML = [...text].map((ch, i) => (ch !== old[i] ? `<span class="flap" style="animation-delay:${i * 22}ms">${esc(ch)}</span>` : esc(ch))).join('');
+  const cell = (ch) => (ch === ' ' ? '&nbsp;' : esc(ch));
+  el.innerHTML = [...text].map((ch, i) => (ch !== old[i] ? `<span class="flap" style="animation-delay:${i * 22}ms">${cell(ch)}</span>` : cell(ch))).join('');
 }
 
 function prettyKey(k) {
@@ -284,6 +286,7 @@ function go(p) {
   if (p === 'lab') requestAnimationFrame(drawMap);
   if (p === 'guts') renderGuts(true);
   if (p === 'trip') requestAnimationFrame(drawSpark);
+  if (p === 'maps') loadMaps();
 }
 
 function renderHotkeyBadges() {
@@ -573,12 +576,13 @@ function onState(msg) {
   $('#errBox').classList.toggle('hidden', !liveError);
   if (liveError) $('#errBox').textContent = liveError;
   if (link !== 'live' || !live) {
+    renderNowPlaying();
     setBoard($('#bLevel'), '--------');
     setBoard($('#bSpeed'), '000', false);
     pushMini();
     return;
   }
-  setBoard($('#bLevel'), (live.level || 'UNKNOWN').replace(/^LV_/, '').toUpperCase());
+  setBoard($('#bLevel'), live.map_status === 'loaded' && live.map_name ? live.map_name.toUpperCase().slice(0, 18) : (live.level || 'UNKNOWN').replace(/^LV_/, '').toUpperCase());
   if (live.level && live.level !== trailLevel) {
     trailLevel = live.level;
     trail = [];
@@ -628,6 +632,8 @@ function onState(msg) {
   if (page === 'guts') renderGuts(false);
   if (page === 'lab') drawMap();
   if (page === 'trip') drawSpark();
+  renderNowPlaying();
+  if (live.map_status && live.map_status !== 'none' && live.map_running === '1') setBoard($('#bTimer'), fmtSec(parseFloat(live.map_time || 0)), false);
   pushMini();
 }
 
@@ -861,6 +867,141 @@ function renderGuts(force) {
       if (cell.textContent !== txt) cell.textContent = txt;
     }
   }
+}
+
+let mapsData = { ok: false, maps: [], best: {} };
+const GEM_ORDER = ['diamond', 'emerald', 'gold', 'steel', 'rock'];
+const GEM_COLOR = { diamond: '#bdebff', emerald: '#3fd39a', gold: '#ffc83a', steel: '#a9b4c8', rock: '#8a7b6b', coal: '#4a4a5a' };
+
+function earnedGem(gems, t) {
+  if (!t) return null;
+  for (const g of GEM_ORDER) if (gems && gems[g] && t <= gems[g]) return g;
+  return 'coal';
+}
+
+const fmtSec = (t) => fmtTime(t * 1000);
+
+async function loadMaps() {
+  mapsData = await window.hb.maps.list();
+  renderMaps();
+}
+
+function renderMaps() {
+  const box = $('#mapsList');
+  if (!box) return;
+  if (!mapsData.ok) {
+    box.innerHTML = '<p class="py-8 text-center text-sm text-mute">Set up the game and install the hook first, then your maps live here.</p>';
+    return;
+  }
+  if (!mapsData.maps.length) {
+    box.innerHTML = '<p class="py-8 text-center text-sm text-mute">No maps yet. Make one in Builderballin, export it, and drop the file here.</p>';
+    return;
+  }
+  const playing = live && live.map_file && live.map_status && live.map_status !== 'none' ? live.map_file : null;
+  box.innerHTML = mapsData.maps
+    .map((m) => {
+      const best = (mapsData.best || {})[m.file];
+      const gem = earnedGem(m.gems, best);
+      const gemTimes = GEM_ORDER.filter((g) => m.gems && m.gems[g]).map((g) => `<span class="inline-flex items-center gap-1"><span class="gem" style="background:${GEM_COLOR[g]}"></span>${m.gems[g]}s</span>`).join('');
+      return `<div class="grid grid-cols-[1fr_auto] gap-4 items-center py-4 border-b border-rail/60 last:border-0">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-semibold text-base">${esc(m.name)}</span>
+            ${m.difficulty ? `<span class="px-1.5 rounded bg-lilac/15 text-lilac text-[11px] font-medium">${esc(m.difficulty)}</span>` : ''}
+            ${m.author ? `<span class="text-xs text-mute">by ${esc(m.author)}</span>` : ''}
+            ${playing === m.file ? '<span class="px-1.5 rounded bg-mint/15 text-mint text-[11px] font-medium">Playing</span>' : ''}
+          </div>
+          ${m.description ? `<p class="text-xs text-mute mt-1 truncate">${esc(m.description)}</p>` : ''}
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-mute">
+            <span>${m.parts} parts, ${m.zones} zones, ${m.checkpoints} checkpoint${m.checkpoints === 1 ? '' : 's'}</span>
+            ${gemTimes ? `<span class="flex items-center gap-3">${gemTimes}</span>` : ''}
+            ${best ? `<span class="flex items-center gap-1.5 text-chalk"><span class="gem" style="background:${GEM_COLOR[gem]}"></span>Best ${fmtSec(best)}</span>` : ''}
+          </div>
+        </div>
+        <div class="flex gap-1.5">
+          ${m.ready ? `<button class="btn btn-main h-9 px-4 rounded-lg text-sm" data-play="${esc(m.file)}">Play</button>` : '<span class="text-xs text-rose self-center">Export it again</span>'}
+          <button class="btn w-9 h-9 rounded-lg grid place-items-center text-mute hover:text-rose" data-remove="${esc(m.file)}" aria-label="Remove ${esc(m.name)}"><span class="w-4 h-4">${svg('x')}</span></button>
+        </div>
+      </div>`;
+    })
+    .join('');
+  $$('[data-play]', box).forEach((b) =>
+    b.addEventListener('click', () => {
+      if (link !== 'live') return toast('Get into a level first', false);
+      window.hb.event('map_load', b.dataset.play);
+      toast('Loading map');
+    })
+  );
+  $$('[data-remove]', box).forEach((b) =>
+    b.addEventListener('click', async () => {
+      mapsData = await window.hb.maps.remove(b.dataset.remove);
+      renderMaps();
+      toast('Map removed');
+    })
+  );
+}
+
+function renderNowPlaying() {
+  const np = $('#nowPlaying');
+  if (!np) return;
+  const on = link === 'live' && live && live.map_status && live.map_status !== 'none';
+  np.classList.toggle('hidden', !on);
+  if (!on) {
+    if (renderNowPlaying.was) renderMaps();
+    renderNowPlaying.was = false;
+    return;
+  }
+  if (!renderNowPlaying.was) renderMaps();
+  renderNowPlaying.was = true;
+  const st = live.map_status;
+  setBoard($('#npName'), (live.map_name || live.map_file || '').toUpperCase().slice(0, 28));
+  $('#npTime').textContent = fmtSec(parseFloat(live.map_time || 0));
+  $('#npTime').classList.toggle('dot-dim', live.map_running !== '1' && !live.map_finish);
+  $('#npCp').textContent = live.map_cp || '0/0';
+  $('#npDeaths').textContent = live.map_deaths || '0';
+  $('#npMsg').textContent = st.startsWith('loading') ? `Building the map, ${st.replace('loading ', '')} parts` : st === 'waiting' ? 'Waiting for you to load into a level' : st === 'error' ? live.map_error || 'Something went wrong' : live.map_msg || (live.map_finish ? `Finished in ${fmtSec(parseFloat(live.map_finish))}` : live.map_running === '1' ? 'Go go go' : 'Move to start the timer');
+  if (live.map_finish && live.map_finish !== renderNowPlaying.fin) {
+    renderNowPlaying.fin = live.map_finish;
+    toast(`Finished in ${fmtSec(parseFloat(live.map_finish))}`);
+    setTimeout(loadMaps, 400);
+  }
+}
+
+function wireMaps() {
+  $('#mapsBuilder').addEventListener('click', () => window.hb.maps.builder());
+  $('#mapsFolder').addEventListener('click', () => window.hb.maps.folder());
+  $('#mapsRefresh').addEventListener('click', loadMaps);
+  const afterAdd = (r) => {
+    if (!r) return;
+    mapsData = r;
+    renderMaps();
+    if (r.added && r.added.length) toast(r.added.length === 1 ? 'Map added' : `${r.added.length} maps added`);
+    if (r.skipped && r.skipped.length) toast(`Skipped ${r.skipped.join(', ')}`, false);
+  };
+  $('#mapsAdd').addEventListener('click', async () => afterAdd(await safely(() => window.hb.maps.pick())));
+  $('#npRestart').addEventListener('click', () => window.hb.event('map_restart', ''));
+  $('#npRespawn').addEventListener('click', () => window.hb.event('map_respawn', ''));
+  $('#npUnload').addEventListener('click', () => {
+    window.hb.event('map_unload', '');
+    toast('Left the map');
+  });
+  const drop = $('#mapsDrop');
+  window.addEventListener('dragover', (e) => {
+    if (page !== 'maps') return;
+    e.preventDefault();
+    drop.classList.add('border-amber', 'text-amber');
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget) return;
+    drop.classList.remove('border-amber', 'text-amber');
+  });
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    drop.classList.remove('border-amber', 'text-amber');
+    if (page !== 'maps') go('maps');
+    const paths = [...e.dataTransfer.files].map((f) => window.hb.maps.pathFor(f)).filter(Boolean);
+    if (paths.length) afterAdd(await safely(() => window.hb.maps.add(paths)));
+  });
 }
 
 function pushMini() {
@@ -1114,6 +1255,7 @@ async function boot() {
   buildCheats();
   buildSliders();
   wire();
+  wireMaps();
   startSky();
   info = await hb.info();
   if (info.cfg) cfg = Object.assign(defaults(), info.cfg, { locks: info.cfg.locks || {} });

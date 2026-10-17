@@ -6,6 +6,8 @@
 
 A trainer for [Hyperballin](https://itch.io/search?q=hyperballin), the free marble parkour game on itch.io. Hyperboi hooks into the game while it runs and gives you god mode, no cooldowns, infinite air jumps, physics sliders, warp spots, a run timer and a live view of the game's own variables, so you can practice the hard parts of a course over and over.
 
+It also comes with **Builderballin**, a map editor that runs in your browser, so you can build your own courses and play them in the real game.
+
 Hyperballin is single player. Hyperboi only touches your own game on your own PC.
 
 <p align="center">
@@ -65,6 +67,44 @@ A small always-on-top panel with your speed, your timer and which cheats are on.
 
 The departure board up top always shows your speed, run timer, the level you're on and whether the game is connected. The overview page adds a speed graph, airtime, distance, respawns and quick switches for the main cheats.
 
+## Builderballin
+
+<p align="center">
+  <img src="docs/builderballin.gif" alt="Builderballin assembling its starter course" width="760">
+</p>
+
+**[Open Builderballin](https://drapids.github.io/Hyperboi/builderballin/)**
+
+A 3D map editor for Hyperballin. Nothing to install, it runs in the browser and saves as you go.
+
+Making a basic map takes a minute: pick a piece, click to place it, drag to paint a row of them. Underneath that there's a lot more to dig into.
+
+- **Shapes:** platforms, cubes, beams, walls, cylinders, discs, spheres and cones, at any size and in any colour.
+- **Smart pieces:** ramps, stairs, curves that bank and climb, loops and corkscrews, tubes, half pipes, pillar rows, zigzags and hoops. Change a number and the whole thing rebuilds.
+- **Gameplay:** spawn, finish, checkpoints, kill zones, bounce pads, boost pads, speed zones, gravity zones, wind, slow motion, teleporters, triggers and message zones.
+- **Game parts:** real pieces from Hyperballin, like the rounded track, half tunnels, the spinning striped plate, boost and bounce pillars, hook points, the marble and the gorilla.
+- **Motion:** anything can move along a path, spin, swing or blink on and off. It can start right away or wait for a trigger, so you can build doors, crushers and collapsing floors.
+- **Editing:** move, rotate and scale gizmos, snapping, box select, groups, copy and paste, an array tool for making rows and spirals of copies, mirroring, and undo.
+- **Preview:** a time scrubber plays every moving part so you can check timing before you test in game.
+- **Map settings:** name, author, difficulty, gem times, and rules for gravity, run speed, jump height, fall limit, time limit and required checkpoints.
+- **Files:** maps save as `.hbmap` files. Drag one onto the page to open it.
+
+<img src="docs/builderballin-inspector.png" alt="Editing a moving platform in Builderballin" width="880">
+
+### Playing your maps
+
+<img src="docs/maps.png" alt="The Maps page in Hyperboi" width="880">
+
+1. Press **Export map** in Builderballin to download the `.hbmap` file.
+2. In Hyperboi, open **Maps** and drop the file in.
+3. Load into any level in the game and press **Play**. The map is built up in the sky above the level and you're dropped at its spawn.
+
+The Maps page shows your run time, checkpoints and resets live. Each map remembers your best time and the gem you earned. Leave the map and you're put back where you were.
+
+The mod also tries to add **Custom maps** to the game's own main menu, next to Options. Pick a map there and the game starts with it loaded.
+
+Under the hood, the map is built from Unreal's own basic shapes plus the game's real meshes. Moving parts are updated every frame, and zones are checked against your position as you play.
+
 ## Hotkeys
 
 These work while you're in the game. You can change any of them on the Controls page, or turn them all off.
@@ -123,11 +163,18 @@ src/input.css            Tailwind source and the custom styles
 src/tw.css               Compiled CSS (built from input.css)
 src/mini.html, mini.js   The overlay
 hook/Hyperboi/           The UE4SS mod that goes into the game
+  Scripts/main.lua       Cheats, physics, warps and the bridge
+  Scripts/maps.lua       Builds custom maps in game and runs their zones and motion
+  Scripts/menu.lua       Adds Custom maps to the game's menu
+  Scripts/json.lua       Reads map files
+builderballin/           The map editor (plain static site, three.js)
 scripts/build-css.mjs    Rebuilds tw.css
 assets/icon.png          App icon
 ```
 
 After changing classes in the HTML or JS, run `npm run css` to rebuild `tw.css`.
+
+Builderballin has no build step. To run it locally, serve the `builderballin` folder with any static server, for example `npx serve builderballin`.
 
 ## If it's not connecting
 
@@ -135,12 +182,14 @@ After changing classes in the HTML or JS, run `npm run css` to rebuild `tw.css`.
 - **UE4SS might not support Unreal 5.8 yet.** If it doesn't, the game opens like nothing happened. Reinstall the hook once a newer UE4SS build is out.
 - **Check Windows Defender.** It sometimes quarantines `dwmapi.dll` (that's UE4SS's loader). Look in Protection history.
 - **Close the game before installing.** The game locks its files while it's running.
+- **A map won't load?** Check `ue4ss/Mods/Hyperboi/bridge/maps_log.txt` in the game folder. It lists any pieces the game couldn't find.
 
 ## Credits
 
 - [Hyperballin](https://itch.io/search?q=hyperballin), the game this is for. Hyperboi isn't made by or connected to its developer.
 - [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS), which makes the in-game part possible.
-- [Doto](https://fonts.google.com/specimen/Doto) and [Familjen Grotesk](https://fonts.google.com/specimen/Familjen+Grotesk) from Google Fonts.
+- [three.js](https://threejs.org) for Builderballin's 3D view.
+- [Doto](https://fonts.google.com/specimen/Doto), [Familjen Grotesk](https://fonts.google.com/specimen/Familjen+Grotesk) and [Schibsted Grotesk](https://fonts.google.com/specimen/Schibsted+Grotesk) from Google Fonts.
 
 ## License
 

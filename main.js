@@ -260,7 +260,10 @@ function poll() {
       if (st.mtimeMs !== lastStateMtime) {
         lastStateMtime = st.mtimeMs;
         const parsed = parseState(fs.readFileSync(sp, 'utf8'));
-        if (parsed) lastState = parsed;
+        if (parsed) {
+          lastState = parsed;
+          trackMapBest(parsed);
+        }
       }
       if (fresh) link = 'live';
       else if (gameRunning) link = 'waiting';
@@ -599,6 +602,118 @@ ipcMain.on('win', (_e, a) => {
   if (a === 'max') (win.isMaximized() ? win.unmaximize() : win.maximize());
   if (a === 'close') win.close();
 });
+const BUILDER_URL = 'https://drapids.github.io/Hyperboi/builderballin/';
+
+function mapsDir() {
+  const h = hookLayout(store.gameDir);
+  if (!h || !exists(h.mod)) return null;
+  const d = path.join(h.mod, 'maps');
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+function readMapMeta(file, full) {
+  try {
+    const data = JSON.parse(fs.readFileSync(full, 'utf8'));
+    if (data.format !== 'builderballin') return null;
+    const st = fs.statSync(full);
+    return {
+      file,
+      name: (data.meta && data.meta.name) || file.replace(/\.hbmap$/i, ''),
+      author: (data.meta && data.meta.author) || '',
+      description: (data.meta && data.meta.description) || '',
+      difficulty: (data.meta && data.meta.difficulty) || '',
+      gems: (data.meta && data.meta.gems) || {},
+      parts: data.build ? (data.build.parts || []).length : 0,
+      zones: data.build ? (data.build.zones || []).length : 0,
+      checkpoints: data.build ? data.build.checkpoints || 0 : 0,
+      ready: !!data.build,
+      added: st.mtimeMs
+    };
+  } catch {
+    return null;
+  }
+}
+
+function listMaps() {
+  const d = mapsDir();
+  if (!d) return { ok: false, maps: [] };
+  const maps = [];
+  for (const f of fs.readdirSync(d)) {
+    if (!/\.hbmap$/i.test(f)) continue;
+    const m = readMapMeta(f, path.join(d, f));
+    if (m) maps.push(m);
+  }
+  maps.sort((a, b) => b.added - a.added);
+  const clean = (v) => String(v || '').replace(/[|\r\n]/g, ' ');
+  try {
+    fs.writeFileSync(path.join(d, 'index.txt'), maps.filter((m) => m.ready).map((m) => [m.file, clean(m.name), clean(m.author), clean(m.difficulty)].join('|')).join('\n') + '\n');
+  } catch {}
+  return { ok: true, maps, best: store.mapBest || {} };
+}
+
+function addMapFiles(paths) {
+  const d = mapsDir();
+  if (!d) throw new Error('Set up the game and install the hook first');
+  const added = [];
+  const skipped = [];
+  for (const src of paths) {
+    let text;
+    try {
+      text = fs.readFileSync(src, 'utf8');
+      const data = JSON.parse(text);
+      if (data.format !== 'builderballin') throw new Error();
+      if (!data.build) {
+        skipped.push(`${path.basename(src)} (export it again from Builderballin)`);
+        continue;
+      }
+    } catch {
+      skipped.push(`${path.basename(src)} (not a map)`);
+      continue;
+    }
+    const base = path.basename(src).replace(/\.(hbmap|json)$/i, '').replace(/[^a-z0-9 _.-]/gi, '_') || 'map';
+    let name = `${base}.hbmap`;
+    let i = 2;
+    while (exists(path.join(d, name)) && fs.readFileSync(path.join(d, name), 'utf8') !== text) name = `${base} (${i++}).hbmap`;
+    fs.writeFileSync(path.join(d, name), text);
+    added.push(name);
+  }
+  return { added, skipped, ...listMaps() };
+}
+
+let lastFinish = null;
+function trackMapBest(state) {
+  if (!state || !state.map_file || !state.map_finish) return;
+  const key = `${state.map_file}|${state.map_finish}`;
+  if (key === lastFinish) return;
+  lastFinish = key;
+  const t = parseFloat(state.map_finish);
+  store.mapBest = store.mapBest || {};
+  const prev = store.mapBest[state.map_file];
+  if (!prev || t < prev) {
+    store.mapBest[state.map_file] = t;
+    saveStore();
+  }
+}
+
+ipcMain.handle('maps:list', () => listMaps());
+ipcMain.handle('maps:pick', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Add maps', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Builderballin maps', extensions: ['hbmap', 'json'] }] });
+  if (r.canceled) return { added: [], skipped: [], ...listMaps() };
+  return addMapFiles(r.filePaths);
+});
+ipcMain.handle('maps:add', (_e, paths) => addMapFiles(paths || []));
+ipcMain.handle('maps:remove', (_e, file) => {
+  const d = mapsDir();
+  if (d && /^[^\\/]+\.hbmap$/i.test(file) && exists(path.join(d, file))) fs.unlinkSync(path.join(d, file));
+  return listMaps();
+});
+ipcMain.handle('maps:folder', () => {
+  const d = mapsDir();
+  if (d) shell.openPath(d);
+});
+ipcMain.handle('maps:builder', () => shell.openExternal(BUILDER_URL));
+
 ipcMain.handle('external', (_e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
 });

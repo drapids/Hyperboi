@@ -172,6 +172,55 @@
         </div>
       </section>
 
+      <section class="page" data-page="maps">
+        <div class="p-6">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h1 class="text-[28px] font-semibold leading-tight">Maps</h1>
+              <p class="text-mute mt-1 max-w-xl">Build maps in Builderballin, drop the .hbmap files here and press Play. They also show up under Custom maps in the game's own menu.</p>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button id="mapsBuilder" class="btn btn-line h-9 px-4 rounded-lg text-sm">Open Builderballin</button>
+              <button id="mapsAdd" class="btn btn-main h-9 px-4 rounded-lg text-sm">Add maps</button>
+            </div>
+          </div>
+
+          <div id="nowPlaying" class="hidden mt-5 board rounded-xl p-5">
+            <div class="flex items-center gap-7">
+              <div class="min-w-0 flex-1">
+                <div class="text-[11px] text-mute">Now playing</div>
+                <div id="npName" class="dot text-3xl truncate">--------</div>
+                <div id="npMsg" class="text-sm text-chalk mt-1 h-5 truncate"></div>
+              </div>
+              <div>
+                <div class="text-[11px] text-mute">Time</div>
+                <div id="npTime" class="dot text-4xl">0:00.00</div>
+              </div>
+              <div>
+                <div class="text-[11px] text-mute">Checkpoints</div>
+                <div id="npCp" class="dot text-2xl">0/0</div>
+              </div>
+              <div>
+                <div class="text-[11px] text-mute">Resets</div>
+                <div id="npDeaths" class="dot text-2xl">0</div>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <button id="npRestart" class="btn btn-main h-8 px-3 rounded-md text-xs">Restart run</button>
+                <button id="npRespawn" class="btn btn-line h-8 px-3 rounded-md text-xs">Back to checkpoint</button>
+                <button id="npUnload" class="btn btn-line h-8 px-3 rounded-md text-xs">Leave map</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="mapsDrop" class="mt-5 rounded-xl border-2 border-dashed border-rail px-6 py-5 text-center text-mute transition-colors">Drop .hbmap files anywhere on this page</div>
+          <div id="mapsList" class="mt-4 rounded-xl bg-panel px-5"></div>
+          <div class="mt-3 flex gap-2">
+            <button id="mapsFolder" class="btn btn-line h-8 px-3 rounded-md text-xs">Open maps folder</button>
+            <button id="mapsRefresh" class="btn btn-line h-8 px-3 rounded-md text-xs">Refresh</button>
+          </div>
+        </div>
+      </section>
+
       <section class="page" data-page="binds">
         <div class="p-6">
           <h1 class="text-[28px] font-semibold leading-tight">Controls</h1>

@@ -4,6 +4,14 @@ local bridgeDir = modDir .. "/bridge"
 local cmdPath = bridgeDir .. "/cmd.txt"
 local statePath = bridgeDir .. "/state.txt"
 
+package.path = modDir .. "/Scripts/?.lua;" .. package.path
+local maps = require("maps")
+local menu = require("menu")
+local mapKill = false
+local frameTicks = 0
+local seenFrameTicks = -1
+local frameHooked = false
+
 local cfg = {
     god = false, nocd = false, infmeter = false, airjumps = false, nokill = false, ghost = false,
     pspeed = 1.0, wspeed = 1.0, jump = 1.0, grav = 1.0, air = 1.0,
@@ -334,7 +342,7 @@ local function applyMovement(o)
 end
 
 local function applyKillboxes()
-    local want = cfg.nokill
+    local want = cfg.nokill or mapKill
     if not want and not killboxesOff then return end
     if (want and tick % 20 == 0) or (not want and killboxesOff) then
         local kb = cached("kb", 60, function() return FindAllOf("BP_Killbox_C") end, true)
@@ -377,7 +385,10 @@ local function handleEvents(o)
     local evs = cfg._events
     cfg._events = {}
     for _, e in ipairs(evs) do
-        if e.kind == "tp_save" and o.char then
+        if maps.handle(e.kind, e.arg) then
+        elseif e.kind == "map_picker" then
+            menu.openPicker()
+        elseif e.kind == "tp_save" and o.char then
             local p = loc(o.char)
             if p then slots[tonumber(e.arg) or 1] = p end
         elseif e.kind == "tp_load" and o.char then
@@ -560,6 +571,7 @@ local function writeState(o, status)
     for _, b in ipairs(binds) do
         table.insert(L, "bind=" .. b)
     end
+    for _, line in ipairs(maps.state()) do table.insert(L, line) end
     table.insert(L, "evt=" .. lastEvt)
     table.insert(L, "end=1")
     local f = io.open(statePath, "w")
@@ -609,14 +621,65 @@ local function step()
             dumpBinds(o)
         end
     else
+        local evs = cfg._events
         cfg._events = {}
+        for _, e in ipairs(evs) do maps.handle(e.kind, e.arg) end
     end
     applyKillboxes()
+    menu.tick()
+    if tick % 20 == 0 then menu.scan() end
+    if o.char and not frameHooked and tick % 40 == 0 then
+        frameHooked = pcall(function()
+            RegisterHook("/Game/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C:ReceiveTick", function()
+                frameTicks = frameTicks + 1
+                local ok, err = pcall(maps.tick)
+                if not ok then
+                    local f = io.open(bridgeDir .. "/error.txt", "w")
+                    if f then f:write("maps: " .. tostring(err)) f:close() end
+                end
+            end)
+        end)
+    end
 
     if tick % 5 == 0 then
         writeState(o, o.char and "playing" or "menu")
     end
 end
+
+local ctx = {
+    bridgeDir = bridgeDir,
+    modDir = modDir,
+    maps = maps,
+    getChar = function() return valid(Char) and Char or nil end,
+    getCmc = function()
+        if not valid(Char) then return nil end
+        local c = safe(function() return Char.CharacterMovement end)
+        return valid(c) and c or nil
+    end,
+    worldName = function()
+        if not valid(Char) then return "" end
+        local w = safe(function() return Char:GetWorld() end)
+        return w and fname(w) or ""
+    end,
+    setKillboxes = function(on) mapKill = on end,
+}
+maps.init(ctx)
+menu.init(ctx)
+
+LoopAsync(16, function()
+    if frameTicks ~= seenFrameTicks then
+        seenFrameTicks = frameTicks
+        if frameHooked then return false end
+    end
+    ExecuteInGameThread(function()
+        local ok, err = pcall(maps.tick)
+        if not ok then
+            local f = io.open(bridgeDir .. "/error.txt", "w")
+            if f then f:write("maps: " .. tostring(err)) f:close() end
+        end
+    end)
+    return false
+end)
 
 LoopAsync(50, function()
     ExecuteInGameThread(function()
