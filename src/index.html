@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; script-src 'self'">
+<title>Hyperboi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;800;900&family=Familjen+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tw.css">
+</head>
+<body>
+
+<canvas id="sky" class="sky"></canvas>
+
+<div id="loader" class="grid place-items-center">
+  <canvas id="loaderSky" class="sky"></canvas>
+  <div class="relative flex flex-col items-center">
+    <div class="board rounded-xl px-8 py-5">
+      <div id="ldWord" class="dot text-7xl leading-none"></div>
+    </div>
+    <div class="relative w-[420px] h-10 mt-10 track">
+      <div id="ldBall" class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 left-0 w-7 h-7 marble roll"></div>
+    </div>
+    <div id="ldMsg" class="board rounded-md mt-4 px-3 py-1 text-xs text-chalk"></div>
+  </div>
+</div>
+
+<div class="relative z-10 h-full flex flex-col p-3 pt-0 gap-3">
+
+  <header class="drag h-11 flex items-center gap-3 shrink-0 -mx-1">
+    <div class="marble w-5 h-5 ml-1"></div>
+    <div class="dot text-lg leading-none">HYPERBOI</div>
+    <div class="flex-1"></div>
+    <button id="miniBtn" class="nodrag btn btn-line h-8 px-3 rounded-lg text-xs font-medium bg-night/80">Overlay</button>
+    <button data-win="min" aria-label="Minimize" class="nodrag w-9 h-8 grid place-items-center rounded-lg hover:bg-night/80"><span data-icon="min" class="w-4 h-4"></span></button>
+    <button data-win="max" aria-label="Maximize" class="nodrag w-9 h-8 grid place-items-center rounded-lg hover:bg-night/80"><span data-icon="max" class="w-4 h-4"></span></button>
+    <button data-win="close" aria-label="Close" class="nodrag w-9 h-8 grid place-items-center rounded-lg hover:bg-rose hover:text-night"><span data-icon="x" class="w-4 h-4"></span></button>
+  </header>
+
+  <div class="board rounded-2xl shrink-0 grid grid-cols-[1.1fr_1fr_1.3fr_1fr] divide-x divide-[#232a52]">
+    <div class="px-5 py-2.5">
+      <div class="text-[11px] text-mute">Speed</div>
+      <div class="flex items-baseline gap-2"><span id="bSpeed" class="dot text-3xl">000</span><span id="bUnit" class="dot dot-dim text-sm">KM/H</span></div>
+    </div>
+    <div class="px-5 py-2.5">
+      <div class="text-[11px] text-mute">Run timer</div>
+      <div id="bTimer" class="dot text-3xl">0:00.00</div>
+    </div>
+    <div class="px-5 py-2.5 min-w-0">
+      <div class="text-[11px] text-mute">Level</div>
+      <div id="bLevel" class="dot text-3xl truncate">--------</div>
+    </div>
+    <div class="px-5 py-2.5">
+      <div class="text-[11px] text-mute">Game</div>
+      <div id="bLink" class="dot text-3xl">OFFLINE</div>
+    </div>
+  </div>
+
+  <div class="flex-1 flex gap-3 min-h-0">
+    <nav class="panel w-44 shrink-0 rounded-2xl py-5 px-2">
+      <div id="nav" class="flex flex-col gap-5"></div>
+    </nav>
+
+    <main class="panel relative flex-1 min-w-0 rounded-2xl overflow-hidden">
+
+      <section class="page" data-page="trip">
+        <div class="p-6 grid grid-cols-12 gap-5">
+          <div class="col-span-8 relative rounded-xl overflow-hidden h-[300px] board">
+            <canvas id="heroSky" class="absolute inset-0 w-full h-full" style="image-rendering: pixelated"></canvas>
+            <div class="absolute inset-0 bg-gradient-to-t from-[#070a1c] via-[#070a1c]/40 to-transparent"></div>
+            <div class="relative h-full flex flex-col justify-end p-6">
+              <div class="flex items-end gap-3">
+                <div id="speedNum" class="dot text-[120px] leading-[0.8]">0</div>
+                <div class="pb-2">
+                  <button id="unitBtn" class="btn dot text-lg leading-none hover:text-chalk">KM/H</button>
+                  <div class="text-xs text-mute mt-2">Top <span id="topSpeed" class="text-chalk font-semibold">0</span></div>
+                </div>
+              </div>
+              <canvas id="spark" class="w-full h-16 mt-4"></canvas>
+            </div>
+          </div>
+
+          <div class="col-span-4 flex flex-col gap-4">
+            <div class="rounded-xl bg-panel p-5">
+              <div class="flex items-center gap-2.5">
+                <span id="linkDot" class="w-2.5 h-2.5 rounded-full bg-rose"></span>
+                <div id="linkTitle" class="font-semibold text-lg">Not connected</div>
+              </div>
+              <p id="linkHelp" class="text-sm text-mute mt-1.5 leading-relaxed">Hook the game in from setup.</p>
+              <button id="linkCta" class="btn btn-main mt-4 h-9 px-4 rounded-lg text-sm">Open setup</button>
+            </div>
+            <dl class="rounded-xl bg-panel px-5 py-2 divide-y divide-rail/60 text-sm">
+              <div class="flex justify-between py-2.5"><dt class="text-mute">Airtime</dt><dd id="stAir" class="font-semibold">0%</dd></div>
+              <div class="flex justify-between py-2.5"><dt class="text-mute">Distance</dt><dd id="stDist" class="font-semibold">0 m</dd></div>
+              <div class="flex justify-between py-2.5"><dt class="text-mute">Respawns</dt><dd id="stResp" class="font-semibold">0</dd></div>
+              <div class="flex justify-between py-2.5"><dt class="text-mute">Movement</dt><dd id="stMode" class="font-semibold">-</dd></div>
+            </dl>
+          </div>
+
+          <div class="col-span-12 flex items-center justify-between mt-1">
+            <h2 class="text-lg font-semibold">Quick switches</h2>
+            <div id="presetRow" class="flex rounded-lg border border-rail overflow-hidden"></div>
+          </div>
+          <div id="quickGrid" class="col-span-12 grid grid-cols-2 gap-x-6 rounded-xl bg-panel px-5 py-1"></div>
+        </div>
+      </section>
+
+      <section class="page" data-page="cheats">
+        <div class="p-6 max-w-4xl">
+          <h1 class="text-[28px] font-semibold leading-tight">Cheats</h1>
+          <p class="text-mute mt-1 max-w-xl">Hotkeys work while you're in the game. When a cheat is on, it lists the game variables it's holding so you can tell it's working.</p>
+          <div id="cheatGrid" class="mt-5 rounded-xl bg-panel px-5 divide-y divide-rail/60"></div>
+        </div>
+      </section>
+
+      <section class="page" data-page="physics">
+        <div class="p-6 max-w-4xl">
+          <h1 class="text-[28px] font-semibold leading-tight">Physics</h1>
+          <p class="text-mute mt-1">Double-click a slider to reset it.</p>
+          <div id="sliderGrid" class="mt-5 rounded-xl bg-panel px-5 divide-y divide-rail/60"></div>
+          <div class="flex flex-wrap gap-2 mt-5">
+            <button data-act="launch" class="btn btn-line h-10 px-4 rounded-lg text-sm">Launch up</button>
+            <button data-act="boost" class="btn btn-line h-10 px-4 rounded-lg text-sm">Boost forward</button>
+            <button data-act="stop" class="btn btn-line h-10 px-4 rounded-lg text-sm">Stop dead</button>
+            <div class="flex-1"></div>
+            <button data-act="resetphys" class="btn btn-main h-10 px-4 rounded-lg text-sm">Reset all physics</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="lab">
+        <div class="p-6 grid grid-cols-12 gap-5">
+          <div class="col-span-12">
+            <h1 class="text-[28px] font-semibold leading-tight">Practice</h1>
+            <p class="text-mute mt-1">Save spots, warp back to them and time your runs. Everything is saved per level.</p>
+          </div>
+
+          <div class="col-span-7 rounded-xl bg-panel p-4">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold">Route</h2>
+              <div class="flex gap-1.5">
+                <button id="mapGhost" class="btn btn-line h-7 px-2.5 rounded-md text-xs">Hide best run</button>
+                <button id="mapClear" class="btn btn-line h-7 px-2.5 rounded-md text-xs">Clear trail</button>
+              </div>
+            </div>
+            <canvas id="map" class="w-full h-[290px] mt-3 rounded-lg bg-deep"></canvas>
+            <div class="flex justify-between mt-2 text-xs text-mute"><span id="mapPos">No position yet</span><span>Line colour is speed. Dashed line is your best run.</span></div>
+          </div>
+
+          <div class="col-span-5 rounded-xl bg-panel p-4 flex flex-col">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold">Run timer</h2>
+              <button id="loopToggle" class="btn flex items-center gap-2 text-xs text-mute">Auto-arm on warp <span class="lever"></span></button>
+            </div>
+            <div id="timerNum" class="dot text-6xl mt-4">0:00.00</div>
+            <div id="timerSub" class="text-xs text-mute mt-2">Stopped</div>
+            <div class="flex gap-2 mt-4">
+              <button id="timerGo" class="btn btn-main h-9 px-4 rounded-lg text-sm">Start</button>
+              <button id="timerReset" class="btn btn-line h-9 px-4 rounded-lg text-sm">Reset</button>
+            </div>
+            <div class="mt-4 flex-1 min-h-0 overflow-y-auto -mx-1 px-1" id="runList"></div>
+          </div>
+
+          <div class="col-span-12 rounded-xl bg-panel px-5 py-1">
+            <div class="flex items-center justify-between pt-3 pb-1">
+              <h2 class="font-semibold">Warp spots</h2>
+              <div class="text-xs text-mute"><span class="key" data-hk="save1"></span> saves spot 1, <span class="key" data-hk="load1"></span> warps to it</div>
+            </div>
+            <div id="slotGrid" class="divide-y divide-rail/60"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="binds">
+        <div class="p-6">
+          <h1 class="text-[28px] font-semibold leading-tight">Controls</h1>
+          <div class="grid grid-cols-3 gap-5 mt-5 items-start">
+            <div class="rounded-xl bg-panel p-5">
+              <div class="flex items-center justify-between">
+                <h2 class="font-semibold">Game controls</h2>
+                <button id="bindsRefresh" class="btn btn-line h-7 px-2.5 rounded-md text-xs">Read again</button>
+              </div>
+              <p id="bindsNote" class="text-xs text-mute mt-1"></p>
+              <div id="gameBinds" class="mt-3 divide-y divide-rail/60"></div>
+            </div>
+            <div class="rounded-xl bg-panel p-5">
+              <h2 class="font-semibold">Moves</h2>
+              <p class="text-xs text-mute mt-1">Every move in the game files. Keys show up when the game exposes them.</p>
+              <div id="movesList" class="mt-3 divide-y divide-rail/60"></div>
+            </div>
+            <div class="rounded-xl bg-panel p-5">
+              <div class="flex items-center justify-between">
+                <h2 class="font-semibold">Trainer hotkeys</h2>
+                <button id="hkToggle" aria-label="Hotkeys on or off" class="btn"><span class="lever"></span></button>
+              </div>
+              <p class="text-xs text-mute mt-1">Click a key to change it. Backspace clears it, Esc cancels.</p>
+              <div id="hkList" class="mt-3"></div>
+              <button id="hkReset" class="btn mt-3 text-xs text-mute hover:text-amber">Reset to defaults</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="guts">
+        <div class="p-6">
+          <h1 class="text-[28px] font-semibold leading-tight">Variables</h1>
+          <p class="text-mute mt-1 max-w-2xl">Every number and true/false value on your player, the controller and the game mode, live. Type a value and press Enter to set it once, or lock it to keep it there.</p>
+          <div class="flex gap-3 mt-5">
+            <input id="gutsSearch" placeholder="Search variables" class="field flex-1 h-10 rounded-lg px-4 text-sm placeholder:text-mute/70">
+            <div id="gutsOwners" class="flex rounded-lg border border-rail overflow-hidden"></div>
+          </div>
+          <div class="mt-4 rounded-xl bg-panel overflow-hidden">
+            <div class="grid grid-cols-[100px_1fr_80px_130px_160px_56px] gap-3 px-5 py-2.5 text-xs text-mute border-b border-rail">
+              <div>Belongs to</div><div>Name</div><div>Type</div><div>Value</div><div>Set</div><div>Lock</div>
+            </div>
+            <div id="gutsRows"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" data-page="setup">
+        <div class="p-6 max-w-5xl">
+          <h1 class="text-[28px] font-semibold leading-tight">Setup</h1>
+          <p class="text-mute mt-1">Three steps, then you're in.</p>
+          <ol class="grid grid-cols-3 gap-4 mt-5">
+            <li id="step1" class="rounded-xl bg-panel p-5 border border-transparent">
+              <div class="flex items-center gap-3"><span class="stepnum dot text-3xl dot-dim">1</span><h2 class="font-semibold text-base">Find the game</h2></div>
+              <p id="gamePath" class="text-xs text-mute mt-3 break-all leading-relaxed min-h-12"></p>
+              <div class="flex gap-2 mt-4">
+                <button id="detectBtn" class="btn btn-main h-9 px-4 rounded-lg text-sm">Find automatically</button>
+                <button id="pickBtn" class="btn btn-line h-9 px-4 rounded-lg text-sm">Browse</button>
+              </div>
+            </li>
+            <li id="step2" class="rounded-xl bg-panel p-5 border border-transparent">
+              <div class="flex items-center gap-3"><span class="stepnum dot text-3xl dot-dim">2</span><h2 class="font-semibold text-base">Install the hook</h2></div>
+              <p id="hookText" class="text-xs text-mute mt-3 leading-relaxed min-h-12">Downloads UE4SS, a free open source mod loader, and adds the Hyperboi mod to the game folder. Close the game first.</p>
+              <div class="mt-3 h-1.5 rounded-full bg-rail overflow-hidden"><div id="installBar" class="h-full w-0 bg-amber transition-[width] duration-300"></div></div>
+              <div id="installMsg" class="text-xs text-amber mt-2 h-4"></div>
+              <button id="installBtn" class="btn btn-main h-9 px-4 rounded-lg text-sm mt-1">Install hook</button>
+            </li>
+            <li id="step3" class="rounded-xl bg-panel p-5 border border-transparent">
+              <div class="flex items-center gap-3"><span class="stepnum dot text-3xl dot-dim">3</span><h2 class="font-semibold text-base">Play</h2></div>
+              <p id="playText" class="text-xs text-mute mt-3 leading-relaxed min-h-12"></p>
+              <button id="launchBtn" class="btn btn-main h-9 px-4 rounded-lg text-sm mt-4">Launch game</button>
+            </li>
+          </ol>
+
+          <div class="grid grid-cols-2 gap-4 mt-4">
+            <div class="rounded-xl bg-panel p-5">
+              <h2 class="font-semibold">Hook controls</h2>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <button id="toggleHookBtn" class="btn btn-line h-9 px-4 rounded-lg text-sm">Turn hook off</button>
+                <button id="refreshModBtn" class="btn btn-line h-9 px-4 rounded-lg text-sm">Reinstall mod</button>
+                <button id="openFolderBtn" class="btn btn-line h-9 px-4 rounded-lg text-sm">Open game folder</button>
+              </div>
+              <p class="text-xs text-mute mt-3 leading-relaxed">Turning the hook off makes the game launch normally. Nothing gets deleted, so you can turn it back on any time.</p>
+            </div>
+            <div class="rounded-xl bg-panel p-5">
+              <h2 class="font-semibold">Not connecting?</h2>
+              <ul class="text-xs text-mute mt-3 space-y-2 leading-relaxed list-disc pl-4">
+                <li>Load into an actual level. The main menu doesn't count.</li>
+                <li>Hyperballin is on Unreal 5.8, which is very new. If UE4SS doesn't support it yet, the game opens without the hook. Reinstall once a newer UE4SS build is out.</li>
+                <li>Windows Defender sometimes quarantines dwmapi.dll. Check Protection history.</li>
+              </ul>
+              <div id="errBox" class="hidden mt-3 rounded-lg bg-rose/10 border border-rose/40 p-3 text-xs text-rose break-all"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="toasts" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

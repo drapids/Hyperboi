@@ -1,0 +1,329 @@
+@import "tailwindcss";
+
+@theme {
+  --color-night: #101735;
+  --color-deep: #0a0f26;
+  --color-panel: #161f45;
+  --color-rail: #343d6e;
+  --color-mute: #8c93bd;
+  --color-chalk: #ebe8f7;
+  --color-amber: #ffb21a;
+  --color-lilac: #b7a6ff;
+  --color-rose: #ff8fb8;
+  --color-mint: #6fe3b4;
+  --font-board: "Doto", "Consolas", monospace;
+  --font-ui: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-deep);
+  color: var(--color-chalk);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+::selection {
+  background: var(--color-amber);
+  color: var(--color-night);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-rail);
+  border-radius: 4px;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.nodrag {
+  -webkit-app-region: no-drag;
+}
+
+.sky {
+  image-rendering: pixelated;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.board {
+  background: #070a1c;
+  box-shadow: inset 0 0 0 1px #232a52, inset 0 -12px 24px rgba(0, 0, 0, 0.35);
+}
+.dot {
+  font-family: var(--font-board);
+  font-weight: 800;
+  color: var(--color-amber);
+  text-shadow: 0 0 6px rgba(255, 178, 26, 0.55);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.dot-dim {
+  color: #5a4a1e;
+  text-shadow: none;
+}
+.flap {
+  display: inline-block;
+  animation: flap 0.28s steps(3);
+}
+@keyframes flap {
+  0% {
+    transform: scaleY(0.1);
+    filter: brightness(2);
+  }
+  60% {
+    transform: scaleY(1.15);
+  }
+}
+
+.panel {
+  background: var(--color-night);
+  border: 1px solid var(--color-rail);
+}
+
+.lever {
+  display: inline-block;
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 6px;
+  background: #222a58;
+  box-shadow: inset 0 0 0 1px var(--color-rail);
+  transition: background 0.18s;
+  flex: none;
+}
+.lever::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--color-mute);
+  transition:
+    transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1),
+    background 0.18s;
+}
+.is-on .lever,
+.lever.is-on {
+  background: var(--color-amber);
+  box-shadow: none;
+}
+.is-on .lever::after,
+.lever.is-on::after {
+  transform: translateX(18px);
+  background: var(--color-night);
+}
+
+input[type="range"].fader {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type="range"].fader::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--color-amber) var(--fill, 50%), var(--color-rail) var(--fill, 50%));
+}
+input[type="range"].fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 24px;
+  margin-top: -10px;
+  border-radius: 3px;
+  background: linear-gradient(#f3f0ff 0 45%, #9a96b8 45% 55%, #f3f0ff 55%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.stop {
+  position: relative;
+}
+.stop::before {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: -10px;
+  bottom: -10px;
+  width: 4px;
+  background: var(--color-lilac);
+  opacity: 0.45;
+}
+.stop:first-child::before {
+  top: 50%;
+}
+.stop:last-child::before {
+  bottom: 50%;
+}
+.stop .ring {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-night);
+  box-shadow: 0 0 0 3px var(--color-lilac);
+  transition:
+    background 0.15s,
+    transform 0.2s;
+}
+.stop:hover .ring {
+  transform: scale(1.15);
+}
+.stop.active .ring {
+  background: var(--color-amber);
+  box-shadow: 0 0 0 3px var(--color-amber), 0 0 0 7px rgba(255, 178, 26, 0.2);
+}
+.stop.active .lbl {
+  color: var(--color-chalk);
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+.page.active {
+  visibility: visible;
+  opacity: 1;
+}
+
+.btn {
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.1s;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-main {
+  background: var(--color-amber);
+  color: var(--color-night);
+  font-weight: 600;
+}
+.btn-main:hover {
+  background: #ffc34d;
+}
+.btn-line {
+  border: 1px solid var(--color-rail);
+  color: var(--color-chalk);
+}
+.btn-line:hover {
+  border-color: var(--color-lilac);
+}
+
+.key {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: #222a58;
+  border: 1px solid var(--color-rail);
+  border-bottom-width: 2px;
+  white-space: nowrap;
+  color: var(--color-chalk);
+}
+.key.listening {
+  border-color: var(--color-amber);
+  color: var(--color-amber);
+}
+
+.row-on {
+  background: linear-gradient(90deg, rgba(255, 178, 26, 0.09), transparent 60%);
+}
+
+.gem {
+  width: 14px;
+  height: 14px;
+  clip-path: polygon(50% 0, 100% 35%, 80% 100%, 20% 100%, 0 35%);
+}
+
+.toast {
+  animation: toast 2.4s ease forwards;
+}
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  8%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.field {
+  background: #0c1230;
+  border: 1px solid var(--color-rail);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-amber);
+}
+
+#loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  transition: clip-path 0.7s cubic-bezier(0.7, 0, 0.3, 1);
+  clip-path: inset(0 0 0 0);
+}
+#loader.gone {
+  clip-path: inset(0 0 100% 0);
+}
+.track {
+  background: repeating-linear-gradient(90deg, var(--color-rail) 0 10px, transparent 10px 18px) center / 100% 4px no-repeat;
+}
+.marble {
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #fff 0 8%, var(--color-lilac) 22%, #6b55d8 55%, #241a5e 100%);
+  box-shadow: inset -3px -4px 6px rgba(0, 0, 0, 0.35);
+}
+.roll {
+  animation: roll 0.9s linear infinite;
+}
+@keyframes roll {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001s !important;
+    transition-duration: 0.001s !important;
+  }
+}

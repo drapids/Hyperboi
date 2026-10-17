@@ -1,0 +1,28 @@
+{
+  "name": "hyperboi",
+  "productName": "Hyperboi",
+  "version": "1.0.0",
+  "description": "Trainer for Hyperballin",
+  "main": "main.js",
+  "author": "drapids",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "css": "node scripts/build-css.mjs",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "tailwindcss": "^4.1.0"
+  },
+  "build": {
+    "appId": "com.hyperboi.trainer",
+    "productName": "Hyperboi",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "src/**/*", "assets/**/*", "!src/input.css"],
+    "extraResources": [{ "from": "hook", "to": "hook" }],
+    "win": { "target": "portable", "icon": "assets/icon.png" },
+    "portable": { "artifactName": "Hyperboi.exe" }
+  }
+}

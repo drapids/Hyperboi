@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; script-src 'self'">
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@800&family=Familjen+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tw.css">
+<style>
+html, body { background: transparent !important; }
+</style>
+</head>
+<body class="p-2">
+<div class="board rounded-xl h-[102px] flex items-center gap-4 px-4">
+  <div class="marble w-9 h-9 shrink-0"></div>
+  <div class="shrink-0">
+    <div class="flex items-baseline gap-1.5">
+      <div id="spd" class="dot text-5xl leading-none">000</div>
+      <div id="unit" class="dot dot-dim text-xs">KM/H</div>
+    </div>
+    <div id="tmr" class="dot text-base h-5 mt-1"></div>
+  </div>
+  <div class="flex-1 flex flex-wrap gap-1 justify-end content-center max-h-[86px] overflow-hidden" id="act"></div>
+  <div id="dot" class="absolute top-4 right-4 w-2 h-2 rounded-full bg-rose"></div>
+</div>
+<script src="mini.js"></script>
+</body>
+</html>
