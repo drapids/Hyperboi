@@ -178,18 +178,30 @@ function marbleZig(p) {
   return Array.from({ length: p.count }, (_, i) => ({ pos: [i * p.spacing, (i % 2 ? 1 : -1) * p.offset, i * p.rise], i }));
 }
 
+const pushRange = (minDef = 0, maxDef = 0, label = 'Push') => [
+  { ...len('pushMin', `${label}, slowest`, 0, 30000, minDef, 100), unit: 'm/s', pairMax: 'pushMax' },
+  { ...len('pushMax', `${label}, fastest`, 0, 30000, maxDef, 100), unit: 'm/s', pairMin: 'pushMin' }
+];
 const marbleBase = [colorParam(), modeParam()];
 
+export function speedRange(p, minKey = 'pushMin', maxKey = 'pushMax', legacy = 'push', legacyMin = 1) {
+  const old = p[legacy];
+  let lo = p[minKey] ?? (old !== undefined ? old * legacyMin : 0);
+  let hi = p[maxKey] ?? (old !== undefined ? old : 0);
+  if (lo > hi) [lo, hi] = [hi, lo];
+  return [lo, hi];
+}
+
 export const PIECES = [
-  { id: 'marble', cat: 'marbles', name: 'Marble', kind: 'marble', desc: 'One marble. Same size as every marble in the game', params: [...marbleBase, { ...len('push', 'Push', 0, 30000, 0, 100), unit: 'm/s', hint: 'Starts moving the way its arrow points' }] },
-  { id: 'marble_line', cat: 'marbles', name: 'Marble line', kind: 'marbles', desc: 'A row of marbles to hop along. Bend it, climb it, wiggle it', gen: marbleLine, params: [...marbleBase, num('count', 'Marbles', 2, 80, 8), len('spacing', 'Gap between', 1600, 20000, 4800), len('rise', 'Climb each', -5000, 5000, 300, 50), deg('turn', 'Turn each', -60, 60, 0), len('sway', 'Wiggle', 0, 8000, 0, 100)] },
-  { id: 'marble_zig', cat: 'marbles', name: 'Marble zigzag', kind: 'marbles', desc: 'Marbles left, right, left, right', gen: marbleZig, params: [...marbleBase, num('count', 'Marbles', 2, 60, 8), len('spacing', 'Step forward', 1600, 15000, 3800), len('offset', 'Step aside', 0, 10000, 2200), len('rise', 'Climb each', -4000, 4000, 200, 50)] },
-  { id: 'marble_ring', cat: 'marbles', name: 'Marble ring', kind: 'marbles', desc: 'A circle of marbles around a point', gen: marbleRing, params: [...marbleBase, num('count', 'Marbles', 3, 60, 10), len('radius', 'Radius', 2000, 40000, 8000), len('wobble', 'Wave height', 0, 10000, 0), num('waves', 'Waves', 0, 8, 2)] },
-  { id: 'marble_spiral', cat: 'marbles', name: 'Marble spiral', kind: 'marbles', desc: 'Corkscrew of marbles going up', gen: marbleSpiral, params: [...marbleBase, num('count', 'Marbles', 3, 80, 14), len('radius', 'Radius', 1500, 30000, 6000), deg('turn', 'Turn each', 5, 120, 40), len('rise', 'Climb each', -4000, 4000, 900, 50)] },
-  { id: 'marble_cloud', cat: 'marbles', name: 'Marble cloud', kind: 'marbles', desc: 'A loose swarm of marbles in a box', gen: marbleCloud, params: [colorParam(), modeParam('drift'), num('count', 'Marbles', 3, 120, 24), len('sizeX', 'Length', 2000, 200000, 40000, 500), len('sizeY', 'Width', 2000, 200000, 24000, 500), len('sizeZ', 'Height', 0, 100000, 8000, 500), len('gap', 'Min gap', 0, 10000, 1500), num('seed', 'Shuffle', 1, 999, 1)] },
+  { id: 'marble', cat: 'marbles', name: 'Marble', kind: 'marble', desc: 'One marble. Same size as every marble in the game', params: [...marbleBase, ...pushRange()] },
+  { id: 'marble_line', cat: 'marbles', name: 'Marble line', kind: 'marbles', desc: 'A row of marbles to hop along. Bend it, climb it, wiggle it', gen: marbleLine, params: [...marbleBase, num('count', 'Marbles', 2, 80, 8), len('spacing', 'Gap between', 1600, 20000, 4800), len('rise', 'Climb each', -5000, 5000, 300, 50), deg('turn', 'Turn each', -60, 60, 0), len('sway', 'Wiggle', 0, 8000, 0, 100), ...pushRange()] },
+  { id: 'marble_zig', cat: 'marbles', name: 'Marble zigzag', kind: 'marbles', desc: 'Marbles left, right, left, right', gen: marbleZig, params: [...marbleBase, num('count', 'Marbles', 2, 60, 8), len('spacing', 'Step forward', 1600, 15000, 3800), len('offset', 'Step aside', 0, 10000, 2200), len('rise', 'Climb each', -4000, 4000, 200, 50), ...pushRange()] },
+  { id: 'marble_ring', cat: 'marbles', name: 'Marble ring', kind: 'marbles', desc: 'A circle of marbles around a point', gen: marbleRing, params: [...marbleBase, num('count', 'Marbles', 3, 60, 10), len('radius', 'Radius', 2000, 40000, 8000), len('wobble', 'Wave height', 0, 10000, 0), num('waves', 'Waves', 0, 8, 2), ...pushRange()] },
+  { id: 'marble_spiral', cat: 'marbles', name: 'Marble spiral', kind: 'marbles', desc: 'Corkscrew of marbles going up', gen: marbleSpiral, params: [...marbleBase, num('count', 'Marbles', 3, 80, 14), len('radius', 'Radius', 1500, 30000, 6000), deg('turn', 'Turn each', 5, 120, 40), len('rise', 'Climb each', -4000, 4000, 900, 50), ...pushRange()] },
+  { id: 'marble_cloud', cat: 'marbles', name: 'Marble cloud', kind: 'marbles', desc: 'A loose swarm of marbles in a box', gen: marbleCloud, params: [colorParam(), modeParam('drift'), num('count', 'Marbles', 3, 120, 24), len('sizeX', 'Length', 2000, 200000, 40000, 500), len('sizeY', 'Width', 2000, 200000, 24000, 500), len('sizeZ', 'Height', 0, 100000, 8000, 500), len('gap', 'Min gap', 0, 10000, 1500), num('seed', 'Shuffle', 1, 999, 1), ...pushRange()] },
   {
     id: 'spawner', cat: 'marbles', name: 'Marble spawner', kind: 'spawner', desc: 'Throws marbles out on a timer, like the game does on every stage',
-    params: [colorParam(), modeParam('roll'), { ...num('interval', 'Every', 0.1, 10, 0.35, 0.05), unit: 's' }, len('spread', 'Spread', 0, 30000, 6500), { ...len('speed', 'Throw speed', 0, 30000, 13000, 100), unit: 'm/s' }, deg('angle', 'Throw angle', 0, 180, 60), num('max', 'Max alive', 1, 200, 60), { key: 'channel', label: 'Wait for channel', type: 'text', def: '' }]
+    params: [colorParam(), modeParam('roll'), { ...num('interval', 'Every', 0.1, 10, 0.35, 0.05), unit: 's' }, len('spread', 'Spread', 0, 30000, 6500), { ...len('speedMin', 'Throw, slowest', 0, 30000, 4500, 100), unit: 'm/s', pairMax: 'speedMax' }, { ...len('speedMax', 'Throw, fastest', 0, 30000, 13000, 100), unit: 'm/s', pairMin: 'speedMin' }, deg('angle', 'Throw angle', 0, 180, 60), num('max', 'Max alive', 1, 200, 60), { key: 'channel', label: 'Wait for channel', type: 'text', def: '' }]
   },
 
   { id: 'track', cat: 'track', name: 'Track', kind: 'smart', mat: 'wood', color: '#a8703f', desc: 'Straight wooden track for marbles to roll on', params: [len('length', 'Length', 2000, 200000, 30000, 500), len('width', 'Width', 2000, 40000, 9000), len('thickness', 'Thickness', 50, 3000, 400, 50), len('walls', 'Side walls', 0, 8000, 0, 100), len('drop', 'Drop', -50000, 50000, 0, 100)], build: (p) => {
@@ -212,7 +224,7 @@ export const PIECES = [
   } },
   { id: 'track_pad', cat: 'track', name: 'Wide deck', kind: 'solid', mat: 'wood', color: '#a8703f', size: [40000, 40000, 400], desc: 'Big flat wooden deck' },
 
-  { id: 'spawn', cat: 'play', name: 'Start', kind: 'marker', marker: 'spawn', color: '#5fc8ff', desc: 'Where you start. You get dropped onto a marble here, like the game does', params: [{ ...len('speed', 'Start speed', 0, 30000, 10000, 100), unit: 'm/s' }, colorParam('random'), modeParam('roll')] },
+  { id: 'spawn', cat: 'play', name: 'Start', kind: 'marker', marker: 'spawn', color: '#5fc8ff', desc: 'Where you start. You get dropped onto a marble here, like the game does', params: [{ ...len('speedMin', 'Start speed, slowest', 0, 30000, 10000, 100), unit: 'm/s', pairMax: 'speedMax' }, { ...len('speedMax', 'Start speed, fastest', 0, 30000, 10000, 100), unit: 'm/s', pairMin: 'speedMin' }, colorParam('random'), modeParam('roll')] },
   { id: 'finish', cat: 'play', name: 'Finish rings', kind: 'zone', zone: 'finish', size: [12000, 12000, 12000], rings: true, desc: 'Fly through the rings to end the run' },
   { id: 'checkpoint', cat: 'play', name: 'Checkpoint', kind: 'zone', zone: 'checkpoint', size: [6000, 6000, 6000], desc: 'Respawn here after a fall', params: [num('order', 'Order', 1, 99, 1)] },
   { id: 'kill', cat: 'play', name: 'Kill zone', kind: 'zone', zone: 'kill', size: [100000, 100000, 2000], desc: 'Sends you back to your last checkpoint' },

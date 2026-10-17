@@ -18,7 +18,7 @@ function make(map, piece, pos, extra = {}) {
 function blank() {
   const m = blankMap();
   m.meta.name = 'Untitled map';
-  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 3000 } });
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speedMin: 3000, speedMax: 3000 } });
   make(m, 'marble_line', [5000, 0, 800], { p: { count: 5, spacing: 4800, rise: 300, mode: 'float' } });
   make(m, 'finish', [34000, 0, 3000], { size: [12000, 12000, 12000] });
   make(m, 'kill', [15000, 0, -40000], { size: [200000, 200000, 2000] });
@@ -31,7 +31,7 @@ function hop() {
   m.meta.description = 'Floating marbles all the way. Lines, a zigzag, a spiral and a ring to land on.';
   m.meta.difficulty = 'Easy';
   m.meta.gems = { diamond: 25, emerald: 32, gold: 42, steel: 60, rock: 90 };
-  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 4000, color: 'coral' } });
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speedMin: 4000, speedMax: 4000, color: 'coral' } });
   make(m, 'sign', [6000, -9000, 6000], { rot: [0, 90, 0], p: { text: 'floors hurt. ride the marbles', height: 2200 } });
   make(m, 'marble_line', [5200, 0, 600], { p: { count: 7, spacing: 4800, rise: 500, turn: 4, color: 'cycle', mode: 'float' } });
   make(m, 'marble_zig', [37000, 7500, 4200], { rot: [0, 28, 0], p: { count: 8, spacing: 4200, offset: 2400, rise: 300, color: 'lime', mode: 'float' } });
@@ -56,10 +56,10 @@ function downhill() {
   make(m, 'track_curve', [30000, 0, -4000], { p: { radius: 20000, angle: 90, width: 9000, thickness: 400, bank: 8, rise: -3000, segments: 24 } });
   make(m, 'track', [50000, 20000, -7000], { rot: [0, 90, 0], p: { ...wood, length: 40000, drop: 6000 } });
   make(m, 'track_kicker', [50000, 60000, -13000], { rot: [0, 90, 0], p: { radius: 15000, angle: 35, width: 9000, thickness: 400, segments: 12 } });
-  make(m, 'spawn', [2500, 0, -330], { p: { mode: 'roll', speed: 8000 } });
+  make(m, 'spawn', [2500, 0, -330], { p: { mode: 'roll', speedMin: 8000, speedMax: 8000 } });
   make(m, 'spawner', [3000, 0, 8000], {
     name: 'Runs ahead of you',
-    p: { interval: 0.45, spread: 6000, speed: 9000, angle: 30, max: 70, mode: 'roll', color: 'random' },
+    p: { interval: 0.45, spread: 6000, speedMin: 4000, speedMax: 9000, angle: 30, max: 70, mode: 'roll', color: 'random' },
     anim: { move: { points: [[20000, 0, -3000], [40000, 8000, -5500], [47000, 20000, -7000], [47000, 50000, -11000]], duration: 16, mode: 'loop', ease: 'linear', delay: 0 } }
   });
   make(m, 'checkpoint', [50000, 30000, -5500], { size: [9000, 9000, 6000] });
@@ -79,7 +79,7 @@ function fever() {
   m.meta.description = 'Drifting marbles in slow motion, a ring around a spiral, low gravity and a gate that opens on a trigger.';
   m.meta.difficulty = 'Hard';
   m.meta.gems = { diamond: 40, emerald: 52, gold: 68, steel: 95, rock: 140 };
-  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 5000, color: 'mint' } });
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speedMin: 5000, speedMax: 5000, color: 'mint' } });
   make(m, 'marble_line', [5200, 0, 500], { p: { count: 5, spacing: 5000, rise: 0, color: 'mint', mode: 'float' } });
   make(m, 'slowmo', [42000, 0, 3000], { size: [30000, 30000, 18000], p: { speed: 0.45 } });
   make(m, 'marble_cloud', [42000, 0, 3000], { p: { count: 26, sizeX: 26000, sizeY: 22000, sizeZ: 9000, gap: 1500, seed: 7, color: 'cycle', mode: 'drift' } });

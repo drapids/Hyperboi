@@ -323,7 +323,26 @@ local function spawnMarble(world, pos, opts)
         end
     end
     safe(function() a.NotGroundedTime = 1e12 end)
-    return { actor = a, comp = comp, home = pos, mode = opts.mode, anim = opts.anim, axes = opts.axes, addr = addr(a) }
+    local m = { actor = a, comp = comp, home = pos, mode = opts.mode, anim = opts.anim, axes = opts.axes, addr = addr(a) }
+    if comp then
+        safe(function() comp:SetSimulatePhysics(true) end)
+        safe(function() comp:SetEnableGravity(m.mode ~= "float" and m.mode ~= "drift") end)
+    end
+    return m
+end
+
+local function enforce(m)
+    if not m or not m.comp or not valid(m.actor) then return end
+    local c = m.comp
+    if safe(function() return c:IsSimulatingPhysics(FName("None")) end) == false then
+        safe(function() c:SetSimulatePhysics(true) end)
+        safe(function() c:SetCollisionResponseToChannel(5, 2) end)
+        safe(function() c:SetActive(true, false) end)
+        safe(function() m.actor:SetActorHiddenInGame(false) end)
+        safe(function() c:SetVisibility(true, true) end)
+    end
+    safe(function() c:SetEnableGravity(m.mode ~= "float" and m.mode ~= "drift") end)
+    safe(function() m.actor.possessable = true end)
 end
 
 local function killMarble(m)
@@ -407,6 +426,7 @@ function M.unload(silent)
     for _, m in ipairs(cur.marbles) do killMarble(m) end
     for _, sp in ipairs(cur.spawners) do for _, m in ipairs(sp.live) do killMarble(m) end end
     killMarble(cur.startMarble)
+    if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
     restoreMovement()
     ctx.setKillboxes(false)
     local ch = ctx.getChar()
@@ -511,7 +531,9 @@ local function dropAt(ch, pos, yaw, fresh)
     local world = cur.worldObj
     if fresh ~= false then
         local y = (yaw or 0) * D
-        local speed = sp.speed or 10000
+        local lo, hi = sp.speedMin or sp.speed or 10000, sp.speedMax or sp.speed or 10000
+        if lo > hi then lo, hi = hi, lo end
+        local speed = lo + math.random() * (hi - lo)
         local mat = nil
         if sp.gems and #sp.gems > 0 then mat = sp.gems[math.random(#sp.gems)] end
         cur.startMarble = spawnMarble(world, { pos[1], pos[2], pos[3] + MARBLE_R }, { mat = mat, mode = sp.mode or "roll", yaw = yaw, vel = { math.cos(y) * speed, math.sin(y) * speed, 0 } })
@@ -536,6 +558,9 @@ function M.restart()
     for _, z in ipairs(cur.zones) do z.fired = false end
     cur.triggers = {}
     cur.t0 = now(cur.worldObj)
+    cur.finishAt = nil
+    if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
+    cur.finishText = nil
     dropAt(ch, cur.spawn.pos, cur.spawn.yaw)
 end
 
@@ -567,6 +592,27 @@ local function launch(ch, v, xy, z)
     safe(function() ch:LaunchCharacter({ X = v[1], Y = v[2], Z = v[3] }, xy, z) end)
 end
 
+local function showFinish(ch, z)
+    local c = cls("/Script/Engine.TextRenderActor")
+    local here = charPos(ch)
+    if not c or not here then return end
+    local at = { z.cur[1], z.cur[2], z.cur[3] + z.ext[3] * 0.6 }
+    local yaw = math.atan(here[2] - at[2], here[1] - at[1]) / D
+    local a = spawnActor(cur.worldObj, c, W(at), { Pitch = 0, Yaw = yaw, Roll = 0 })
+    if not a then return end
+    local comp = safe(function() return a.TextRender end)
+    if valid(comp) then
+        safe(function() comp:SetMobility(2) end)
+        safe(function() comp:K2_SetText(FText(("FINISHED  %.2f s"):format(cur.finished))) end)
+        safe(function() comp:SetWorldSize(math.max(800, z.ext[3] * 0.25)) end)
+        safe(function() comp:SetHorizontalAlignment(1) end)
+        safe(function() comp:SetVerticalAlignment(1) end)
+        safe(function() comp:SetTextRenderColor({ R = 95, G = 200, B = 255, A = 255 }) end)
+    end
+    if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
+    cur.finishText = a
+end
+
 local function zoneEnter(z, ch, cmc)
     local t = z.type
     local P = z.params or {}
@@ -585,12 +631,14 @@ local function zoneEnter(z, ch, cmc)
         for _ in pairs(cur.cps) do n = n + 1 end
         if cur.rules.needCheckpoints and n < cur.cpTotal then
             setMsg("Touch every checkpoint first (" .. n .. "/" .. cur.cpTotal .. ")")
-        elseif cur.runStart and not cur.finished then
-            cur.finished = now(cur.worldObj) - cur.runStart
+        elseif not cur.finished then
+            cur.finished = now(cur.worldObj) - (cur.runStart or cur.t0)
             cur.runTime = cur.finished
+            cur.finishAt = now(cur.worldObj)
             if not cur.best or cur.finished < cur.best then cur.best = cur.finished end
             setMsg(("Finished in %.2f s"):format(cur.finished))
             log(("finish %s %.3f"):format(cur.name, cur.finished))
+            showFinish(ch, z)
         end
     elseif t == "bounce" then
         launch(ch, { 0, 0, P.power or 2200 }, not P.keep, true)
@@ -655,7 +703,12 @@ local function spawnBatch(world)
     if #cur.queue == 0 and #cur.mqueue > 0 then
         while #cur.mqueue > 0 and n < BATCH do
             local m = table.remove(cur.mqueue, 1)
-            local mb = spawnMarble(world, m.pos, { mat = m.mat, feather = m.feather, mode = m.mode, vel = m.vel, anim = m.anim, axes = axesFromRot({ 0, 0, 0 }) })
+            local vel = m.vel
+            if m.dir and (m.pushMax or 0) > 0 then
+                local sv = (m.pushMin or 0) + math.random() * ((m.pushMax or 0) - (m.pushMin or 0))
+                vel = { m.dir[1] * sv, m.dir[2] * sv, m.dir[3] * sv }
+            end
+            local mb = spawnMarble(world, m.pos, { mat = m.mat, feather = m.feather, mode = m.mode, vel = vel, anim = m.anim, axes = axesFromRot({ 0, 0, 0 }) })
             if mb then cur.marbles[#cur.marbles + 1] = mb else cur.failed = (cur.failed or 0) + 1 end
             n = n + 1
         end
@@ -725,11 +778,19 @@ function M.tick()
     if not p then return end
     local cmc = ctx.getCmc()
     if cur.armed and not cur.runStart then
-        local v = valid(cmc) and safe(function() return cmc.Velocity end)
-        if v and (v.X * v.X + v.Y * v.Y) > 2500 then
+        local sp = cur.spawn.pos
+        local dx, dy = p[1] - sp[1], p[2] - sp[2]
+        if dx * dx + dy * dy > 1500 * 1500 then
             cur.runStart = now(world)
             cur.armed = false
         end
+    end
+    if cur.finished and cur.finishAt and now(world) - cur.finishAt > 4 then
+        cur.finishAt = nil
+        if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
+        cur.finishText = nil
+        M.restart()
+        return
     end
     if cur.runStart and not cur.finished then cur.runTime = now(world) - cur.runStart end
     local lim = cur.rules.timeLimit or 0
@@ -781,7 +842,7 @@ function M.tickMarbles(ch, t)
     local dt = math.max(0, math.min(0.1, t - (cur.lastT or t)))
     cur.lastT = t
     local riding = rideAddr(ch)
-    local refresh = cur.frame % 45 == 0
+    local refresh = cur.frame % 20 == 0
     local check = cur.frame % 3 == 0
     for _, m in ipairs(cur.marbles) do
         if valid(m.actor) and m.comp then
@@ -800,10 +861,16 @@ function M.tickMarbles(ch, t)
                     end
                 end
             end
-            if refresh then safe(function() m.actor.NotGroundedTime = 1e12 end) end
+            if refresh then
+                safe(function() m.actor.NotGroundedTime = 1e12 end)
+                if not m.anim then enforce(m) end
+            end
         end
     end
-    if cur.startMarble and refresh and valid(cur.startMarble.actor) then safe(function() cur.startMarble.actor.NotGroundedTime = 1e12 end) end
+    if cur.startMarble and refresh and valid(cur.startMarble.actor) then
+        safe(function() cur.startMarble.actor.NotGroundedTime = 1e12 end)
+        enforce(cur.startMarble)
+    end
     local kill = cur.rules.killHeight or -60000
     for _, sp in ipairs(cur.spawners) do
         local active = true
@@ -823,7 +890,10 @@ function M.tickMarbles(ch, t)
                 local at = { pos[1] + f[1] * a + sd[1] * b2, pos[2] + f[2] * a + sd[2] * b2, pos[3] + f[3] * a + sd[3] * b2 }
                 local ang = (math.random() - 0.5) * (sp.angle or 60) * D
                 local dir = rotateVec(f, { 0, 0, 1 }, ang)
-                local sv = (sp.speed or 13000) * (0.35 + math.random() * 0.65)
+                local lo = sp.speedMin or (sp.speed or 13000) * 0.35
+                local hi = sp.speedMax or sp.speed or 13000
+                if lo > hi then lo, hi = hi, lo end
+                local sv = lo + math.random() * (hi - lo)
                 local mat = nil
                 if sp.gems and #sp.gems > 0 then mat = sp.gems[math.random(#sp.gems)] end
                 local mb = spawnMarble(world, at, { mat = mat, mode = sp.mode or "roll", vel = { dir[1] * sv, dir[2] * sv, dir[3] * sv } })
@@ -838,6 +908,7 @@ function M.tickMarbles(ch, t)
                         table.remove(sp.live, i)
                     else
                         safe(function() m.actor.NotGroundedTime = 1e12 end)
+                        enforce(m)
                     end
                 end
             end

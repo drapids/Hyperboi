@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { TransformControls } from '../vendor/TransformControls.js';
-import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams, GEMS, GEM, MARBLE_R, M, marblePoints, MODE_INFO, pickGem } from './pieces.js';
+import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams, GEMS, GEM, MARBLE_R, M, marblePoints, MODE_INFO, pickGem, speedRange } from './pieces.js';
 import { makeSky, makeEnvironment, gemMaterial, MARBLE_GEO, woodMaterial, finishRings, playerFigure, arrowMesh, MOON_DIR } from './look.js';
 import { blankMap, newObject, uid, flatten, exportMap, importMap, validate, blankAnim, MOVE_DEFAULT, SPIN_DEFAULT, SWING_DEFAULT, BLINK_DEFAULT, DIFFICULTIES, GEM_NAMES, axisVector } from './mapfile.js';
 import { axesFromRot, toThree, fromThree, scaleToThree, scaleFromThree, quatFromRot, rotFromQuat, quatFromAxes, add } from './ue.js';
@@ -311,7 +311,7 @@ function buildVisual(obj, ghost = false) {
       const who = playerFigure();
       who.position.y = MARBLE_R * 2;
       who.scale.setScalar(1.6);
-      const arr = arrowMesh(Math.max(2500, 1500 + prm.speed * 0.5), '#5fc8ff', 260);
+      const arr = arrowMesh(Math.max(2500, 1500 + speedRange(prm, 'speedMin', 'speedMax', 'speed')[1] * 0.5), '#5fc8ff', 260);
       arr.position.y = MARBLE_R;
       arr.position.x = MARBLE_R * 1.05;
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(40, 40, 12000, 8), new THREE.MeshBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 0.25, depthWrite: false }));
@@ -354,10 +354,14 @@ function buildVisual(obj, ghost = false) {
         root.add(halo);
       }
     }
-    if (piece.kind === 'marble' && prm.push > 0) {
-      const arr = arrowMesh(1500 + prm.push * 0.35, '#5fc8ff', 220);
-      arr.position.x = MARBLE_R * 1.05;
-      root.add(arr);
+    const pushHi = speedRange(obj.p || {})[1];
+    if (pushHi > 0) {
+      for (const m of piece.kind === 'marble' ? pts : pts.slice(0, 1)) {
+        const arr = arrowMesh(1500 + pushHi * 0.35, '#5fc8ff', 220);
+        arr.position.copy(toThree(m.pos));
+        arr.position.x += MARBLE_R * 1.05;
+        root.add(arr);
+      }
     }
     if (piece.kind === 'marbles' && pts.length > 1 && !thumbMode) {
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map((m) => toThree(m.pos))), new THREE.LineDashedMaterial({ color: '#dddaff', dashSize: 600, gapSize: 500, transparent: true, opacity: ghost ? 0.3 : 0.55 }));
@@ -373,11 +377,12 @@ function buildVisual(obj, ghost = false) {
     edges.scale.setScalar(20);
     edges.userData.edge = true;
     root.add(box, edges);
-    const arr = arrowMesh(Math.max(3000, prm.speed * 0.45), '#9dffca', 320);
+    const throwHi = speedRange(prm, 'speedMin', 'speedMax', 'speed', 0.35)[1];
+    const arr = arrowMesh(Math.max(3000, throwHi * 0.45), '#9dffca', 320);
     arr.position.x = 1000;
     root.add(arr);
     const half = (prm.angle * Math.PI) / 360;
-    const fan = new THREE.Mesh(new THREE.CircleGeometry(Math.max(3000, prm.speed * 0.45), 32, -half, half * 2), new THREE.MeshBasicMaterial({ color: '#9dffca', transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(Math.max(3000, throwHi * 0.45), 32, -half, half * 2), new THREE.MeshBasicMaterial({ color: '#9dffca', transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
     fan.rotation.x = -Math.PI / 2;
     root.add(fan);
     if (prm.spread > 0) {
@@ -1173,7 +1178,10 @@ function stepSim(dt) {
       const side = new THREE.Vector3(0, 0, 1).applyQuaternion(r.quaternion);
       const pos = r.position.clone().addScaledVector(fwd, (Math.random() - 0.5) * prm.spread).addScaledVector(side, (Math.random() - 0.5) * prm.spread);
       const dir = fwd.clone().applyAxisAngle(UP3, (Math.random() - 0.5) * prm.angle * (Math.PI / 180));
-      const vel = dir.multiplyScalar(prm.speed * (0.35 + Math.random() * 0.65));
+      const [sLo, sHi] = speedRange(o.p, 'speedMin', 'speedMax', 'speed', 0.35);
+      const lo = o.p.speedMin === undefined && o.p.speed === undefined ? prm.speedMin : sLo;
+      const hi = o.p.speedMax === undefined && o.p.speed === undefined ? prm.speedMax : sHi;
+      const vel = dir.multiplyScalar(lo + Math.random() * (hi - lo));
       const gem = pickGem(prm.color, ++sim.count, `${o.id}:${sim.frame}`);
       const mesh = new THREE.Mesh(MARBLE_GEO, gemMaterial(gem));
       mesh.castShadow = true;
@@ -1740,13 +1748,16 @@ function renderSelPanel(ins, sel) {
         });
         opts.push(row(prm.label, f));
       } else
-        opts.push(sliderRow({ label: prm.label, value: val / (prm.div || 1), min: prm.min / (prm.div || 1), max: prm.max / (prm.div || 1), step: prm.step / (prm.div || 1), unit: prm.unit || '', onInput: (v) => {
+        opts.push(sliderRow({ label: prm.label, value: (prm.pairMin || prm.pairMax ? one.p[prm.key] ?? legacyVal(one, prm) : val) / (prm.div || 1), min: prm.min / (prm.div || 1), max: prm.max / (prm.div || 1), step: prm.step / (prm.div || 1), unit: prm.unit || '', onInput: (v) => {
           one.p[prm.key] = v * (prm.div || 1);
+          if (prm.pairMax && (one.p[prm.pairMax] ?? legacyVal(one, PIECE[one.piece].params.find((x) => x.key === prm.pairMax))) < one.p[prm.key]) one.p[prm.pairMax] = one.p[prm.key];
+          if (prm.pairMin && (one.p[prm.pairMin] ?? legacyVal(one, PIECE[one.piece].params.find((x) => x.key === prm.pairMin))) > one.p[prm.key]) one.p[prm.pairMin] = one.p[prm.key];
           rebuildObject(one);
           refreshPivot();
         }, onCommit: () => {
           commit('Option');
           updateStats();
+          if (prm.pairMin || prm.pairMax) renderInspector();
         } }));
     }
     if (piece.zone === 'teleport') {
@@ -1965,6 +1976,12 @@ function motionPanel(sel) {
     box.prepend(html('<p class="hint">Make it move, spin, swing or blink. Works on anything, zones too.</p>'));
   }
   return box;
+}
+
+function legacyVal(one, prm) {
+  const old = one.p.push ?? one.p.speed;
+  if (old === undefined) return prm.def;
+  return prm.key.endsWith('Min') && one.piece === 'spawner' ? old * 0.35 : old;
 }
 
 function prm0hint(piece) {

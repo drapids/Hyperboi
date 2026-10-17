@@ -1,4 +1,4 @@
-import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R } from './pieces.js';
+import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R, speedRange } from './pieces.js';
 import { axesFromRot, rotFromAxes, applyAxes, composeAxes, add, hadamard } from './ue.js';
 
 export const FORMAT = 'builderballin';
@@ -94,14 +94,15 @@ export function flatten(map) {
     if (piece.kind === 'marker') {
       if (piece.marker === 'spawn' && !build.spawn) {
         const prm = { ...defaultParams(piece), ...o.p };
-        build.spawn = { pos: o.pos.slice(), yaw: o.rot[1], speed: prm.speed, color: prm.color, mode: prm.mode, gems: gemList(prm.color) };
+        const [lo, hi] = speedRange(o.p, 'speedMin', 'speedMax', 'speed', 1);
+        build.spawn = { pos: o.pos.slice(), yaw: o.rot[1], speedMin: o.p.speedMin === undefined && o.p.speed === undefined ? prm.speedMin : lo, speedMax: o.p.speedMax === undefined && o.p.speed === undefined ? prm.speedMax : hi, color: prm.color, mode: prm.mode, gems: gemList(prm.color) };
       }
       continue;
     }
     if (piece.kind === 'marble' || piece.kind === 'marbles') {
       const prm = { ...defaultParams(piece), ...o.p };
       const fwd = axes[0];
-      const push = prm.push || 0;
+      const [pushMin, pushMax] = speedRange(o.p);
       marblePoints(o).forEach((m, i) => {
         build.marbles.push({
           id: `${o.id}:${i}`,
@@ -110,7 +111,9 @@ export function flatten(map) {
           mat: GEM[m.gem].mat,
           feather: m.gem === 'feather',
           mode: prm.mode,
-          vel: push ? fwd.map((v) => v * push) : null,
+          dir: pushMax > 0 ? fwd.slice() : null,
+          pushMin,
+          pushMax,
           anim
         });
       });
@@ -118,7 +121,7 @@ export function flatten(map) {
     }
     if (piece.kind === 'spawner') {
       const prm = { ...defaultParams(piece), ...o.p };
-      build.spawners.push({ ...common, pos: o.pos.slice(), rot: o.rot.slice(), interval: prm.interval, spread: prm.spread, speed: prm.speed, angle: prm.angle, max: prm.max, mode: prm.mode, channel: (prm.channel || '').trim(), color: prm.color, gems: gemList(prm.color) });
+      build.spawners.push({ ...common, pos: o.pos.slice(), rot: o.rot.slice(), interval: prm.interval, spread: prm.spread, ...spawnerSpeed(o.p, prm), angle: prm.angle, max: prm.max, mode: prm.mode, channel: (prm.channel || '').trim(), color: prm.color, gems: gemList(prm.color) });
       continue;
     }
     if (piece.kind === 'zone') {
@@ -174,6 +177,15 @@ export function flatten(map) {
     });
   }
   return build;
+}
+
+function spawnerSpeed(raw, prm) {
+  if (raw.speedMin === undefined && raw.speedMax === undefined && raw.speed !== undefined) {
+    const [lo, hi] = speedRange(raw, 'speedMin', 'speedMax', 'speed', 0.35);
+    return { speedMin: lo, speedMax: hi };
+  }
+  const [lo, hi] = speedRange({ speedMin: prm.speedMin, speedMax: prm.speedMax }, 'speedMin', 'speedMax');
+  return { speedMin: lo, speedMax: hi };
 }
 
 function gemList(setting) {
