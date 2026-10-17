@@ -16,7 +16,7 @@ local GEM_ODDS = {
 }
 local FEATHER = "/Game/Marble_Materials_4K/Materials/MI_Marble_01"
 local CAPSULE = { 38, 38, 90 }
-local BATCH = 40
+local BATCH = 12
 
 local ctx
 local cur = nil
@@ -151,13 +151,9 @@ local function asset(path, suffix)
     if assetCache[key] ~= nil then return assetCache[key] or nil end
     local base = path:match("([^/]+)$")
     local full = path .. "." .. base .. (suffix or "")
-    local o = StaticFindObject(full)
+    local o = safe(function() return StaticFindObject(full) end)
     if not valid(o) then
-        safe(function() LoadAsset(path) end)
-        o = StaticFindObject(full)
-    end
-    if not valid(o) then
-        log("missing asset " .. full)
+        log("not loaded in this level, skipped: " .. full)
         assetCache[key] = false
         return nil
     end
@@ -176,10 +172,30 @@ end
 
 local SHAPES = { cube = "/Engine/BasicShapes/Cube", cylinder = "/Engine/BasicShapes/Cylinder", sphere = "/Engine/BasicShapes/Sphere", cone = "/Engine/BasicShapes/Cone" }
 
-local function spawnActor(world, class, loc, rot)
-    local a = safe(function() return world:SpawnActor(class, loc, rot) end)
+local function quat(rot)
+    local h = math.pi / 360
+    local p, y, r = (rot.Pitch or 0) * h, (rot.Yaw or 0) * h, (rot.Roll or 0) * h
+    local SP, CP, SY, CY, SR, CR = math.sin(p), math.cos(p), math.sin(y), math.cos(y), math.sin(r), math.cos(r)
+    return {
+        X = CR * SP * SY - SR * CP * CY,
+        Y = -CR * SP * CY - SR * CP * SY,
+        Z = CR * CP * SY - SR * SP * CY,
+        W = CR * CP * CY + SR * SP * SY,
+    }
+end
+
+local GS = nil
+local function spawnActor(world, class, loc, rot, scale)
+    local who = ctx.getChar()
+    if not valid(who) or not valid(class) then return nil end
+    GS = valid(GS) and GS or StaticFindObject("/Script/Engine.Default__GameplayStatics")
+    if not valid(GS) then return nil end
+    local s = scale or { 1, 1, 1 }
+    local xf = { Rotation = quat(rot or {}), Translation = { X = loc.X, Y = loc.Y, Z = loc.Z }, Scale3D = { X = s[1], Y = s[2], Z = s[3] } }
+    local a = safe(function() return GS:BeginDeferredActorSpawnFromClass(who, class, xf, 1, nil, 1) end)
+    if not valid(a) then return nil end
+    safe(function() GS:FinishSpawningActor(a, xf, 1) end)
     if valid(a) then return a end
-    local gs = StaticFindObject("/Script/Engine.Default__GameplayStatics")
     return nil
 end
 
@@ -363,7 +379,7 @@ end
 M.readIndex = readIndex
 
 local function now(world)
-    local gs = StaticFindObject("/Script/Engine.Default__GameplayStatics")
+    local gs = valid(GS) and GS or StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local t = gs and safe(function() return gs:GetTimeSeconds(world) end)
     return t or os.clock()
 end
@@ -702,7 +718,7 @@ end
 local function spawnBatch(world)
     local n = 0
     if #cur.queue == 0 and #cur.mqueue > 0 then
-        while #cur.mqueue > 0 and n < BATCH do
+        while #cur.mqueue > 0 and n < 5 do
             local m = table.remove(cur.mqueue, 1)
             local vel = m.vel
             if m.dir and (m.pushMax or 0) > 0 then
@@ -756,6 +772,7 @@ function M.tick()
     if not valid(ch) then return end
     local world = cur.worldObj
     if #cur.queue > 0 or #cur.mqueue > 0 then
+        if now(world) - cur.t0 < 1.5 then return end
         spawnBatch(world)
         return
     end

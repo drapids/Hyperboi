@@ -8,6 +8,7 @@ local ourBtnDown = false
 local picker = nil
 local pickerButtons = {}
 local injected = false
+local pendingInject = nil
 
 local MENU_CLASS = "/Game/Blueprints/UI/Menus/WB_MMenu.WB_MMenu_C"
 local PLAY_LEVEL = "LevelMaster1"
@@ -315,6 +316,28 @@ local function pressed(b)
 end
 
 function M.tick()
+    if not menu then return end
+    local live = safe(function() return FindFirstOf("WB_MMenu_C") end)
+    if not valid(live) or (safe(function() return live:GetFullName() end) or "") ~= menuName then
+        menu = nil
+        menuName = ""
+        ourBtn = nil
+        picker = nil
+        pickerButtons = {}
+        pendingInject = nil
+        return
+    end
+    if pendingInject and os.clock() >= pendingInject.at then
+        local pm = pendingInject.m
+        pendingInject = nil
+        if valid(pm) then
+            local ok, err = pcall(function()
+                dump(pm)
+                inject(pm)
+            end)
+            if not ok then log("inject error: " .. tostring(err)) end
+        end
+    end
     if valid(ourBtn) then
         local p = pressed(ourBtn)
         if ourBtnDown and not p then openPicker() end
@@ -346,15 +369,7 @@ local function onMenu(m)
     ourBtn = nil
     closePicker()
     log("menu found " .. n)
-    ExecuteWithDelay(900, function()
-        ExecuteInGameThread(function()
-            local ok, err = pcall(function()
-                dump(m)
-                inject(m)
-            end)
-            if not ok then log("inject error: " .. tostring(err)) end
-        end)
-    end)
+    pendingInject = { m = m, at = os.clock() + 1.0 }
 end
 
 function M.scan()
@@ -362,7 +377,8 @@ function M.scan()
     if valid(m) then
         local n = safe(function() return m:GetFullName() end) or ""
         if n ~= menuName then onMenu(m) end
-    elseif menu and not valid(menu) then
+    elseif menu then
+        pendingInject = nil
         menu = nil
         menuName = ""
         ourBtn = nil
@@ -378,14 +394,7 @@ end
 function M.init(c)
     ctx = c
     os.remove(ctx.bridgeDir .. "/menu_log.txt")
-    local ok = pcall(function()
-        NotifyOnNewObject(MENU_CLASS, function(m)
-            ExecuteWithDelay(300, function()
-                ExecuteInGameThread(function() onMenu(m) end)
-            end)
-        end)
-    end)
-    log(ok and "watching for the main menu" or "NotifyOnNewObject not available, scanning instead")
+    log("watching for the main menu")
 end
 
 return M
