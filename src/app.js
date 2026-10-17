@@ -928,6 +928,7 @@ function renderMaps() {
   $$('[data-play]', box).forEach((b) =>
     b.addEventListener('click', () => {
       if (link !== 'live') return toast('Get into a level first', false);
+      if (live && live.ver !== info.modVersion) return toast('Restart the game first so it loads the new mod', false);
       window.hb.event('map_load', b.dataset.play);
       toast('Loading map');
     })
@@ -941,7 +942,13 @@ function renderMaps() {
   );
 }
 
+function renderModWarning() {
+  const old = link === 'live' && live && live.ver !== (info && info.modVersion);
+  $$('.mod-old').forEach((el) => el.classList.toggle('hidden', !old));
+}
+
 function renderNowPlaying() {
+  renderModWarning();
   const np = $('#nowPlaying');
   if (!np) return;
   const on = link === 'live' && live && live.map_status && live.map_status !== 'none';

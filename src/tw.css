@@ -618,6 +618,12 @@
   .border-amber {
     border-color: var(--color-amber);
   }
+  .border-amber\/50 {
+    border-color: color-mix(in srgb, #ffb21a 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-amber) 50%, transparent);
+    }
+  }
   .border-rail {
     border-color: var(--color-rail);
   }

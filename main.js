@@ -5,6 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
+const MOD_VERSION = '3';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;
@@ -200,6 +201,8 @@ function info() {
     gameRunning,
     ue4ss: !!(h && h.ue4ss),
     modInstalled: !!(h && exists(path.join(h.mod, 'Scripts', 'main.lua'))),
+    modCurrent: modCurrent(),
+    modVersion: MOD_VERSION,
     hookEnabled: !!(h && h.proxyDll),
     hookDisabled: !!(h && !h.proxyDll && h.offDll),
     hotkeys: store.hotkeys,
@@ -387,6 +390,49 @@ function pickAsset(releases) {
   return null;
 }
 
+function syncMod() {
+  const h = hookLayout(store.gameDir);
+  if (!h || !h.ue4ss || !exists(h.mods)) return false;
+  const src = path.join(hookSource(), 'Hyperboi', 'Scripts');
+  const dst = path.join(h.mod, 'Scripts');
+  let changed = false;
+  try {
+    fs.mkdirSync(dst, { recursive: true });
+    fs.mkdirSync(h.bridge, { recursive: true });
+    fs.mkdirSync(path.join(h.mod, 'maps'), { recursive: true });
+    if (!exists(path.join(h.mod, 'enabled.txt'))) fs.writeFileSync(path.join(h.mod, 'enabled.txt'), '');
+    for (const f of fs.readdirSync(src)) {
+      const a = fs.readFileSync(path.join(src, f));
+      const target = path.join(dst, f);
+      if (!exists(target) || !a.equals(fs.readFileSync(target))) {
+        fs.writeFileSync(target, a);
+        changed = true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  if (changed) {
+    store.modSyncedAt = Date.now();
+    saveStore();
+  }
+  return changed;
+}
+
+function modCurrent() {
+  const h = hookLayout(store.gameDir);
+  if (!h) return false;
+  const src = path.join(hookSource(), 'Hyperboi', 'Scripts');
+  try {
+    return fs.readdirSync(src).every((f) => {
+      const t = path.join(h.mod, 'Scripts', f);
+      return exists(t) && fs.readFileSync(path.join(src, f)).equals(fs.readFileSync(t));
+    });
+  } catch {
+    return false;
+  }
+}
+
 function copyMod() {
   const h = hookLayout(store.gameDir);
   fs.mkdirSync(h.mods, { recursive: true });
@@ -536,6 +582,7 @@ ipcMain.handle('pick', async () => {
   if (!w) throw new Error("that's not hyperballin (no project_garden exe in there)");
   store.gameDir = w;
   saveStore();
+  syncMod();
   pushInfo();
   return info();
 });
@@ -727,9 +774,13 @@ app.whenReady().then(() => {
       saveStore();
     }
   }
+  syncMod();
   createWindow();
   registerHotkeys();
   checkProcess();
+  setInterval(() => {
+    if (syncMod()) pushInfo();
+  }, 15000);
   procTimer = setInterval(checkProcess, 2000);
   pollTimer = setInterval(poll, 150);
   setInterval(writeCmd, 1000);
