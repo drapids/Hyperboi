@@ -70,26 +70,38 @@ The departure board up top always shows your speed, run timer, the level you're 
 ## Builderballin
 
 <p align="center">
-  <img src="docs/builderballin.gif" alt="Builderballin assembling its starter course" width="760">
+  <img src="docs/builderballin.gif" alt="Builderballin putting together the Downhill starter map" width="760">
 </p>
 
 **[Open Builderballin](https://drapids.github.io/Hyperboi/builderballin/)**
 
-A 3D map editor for Hyperballin. Nothing to install, it runs in the browser and saves as you go.
+A 3D map editor for Hyperballin. Nothing to install. It runs in the browser and saves as you go.
 
-Making a basic map takes a minute: pick a piece, click to place it, drag to paint a row of them. Underneath that there's a lot more to dig into.
+In Hyperballin you jump from marble to marble, and touching any floor hurts you. So Builderballin is built around marbles. Everything in it matches what the game actually does. It was worked out from the game's own blueprints and levels, not guessed:
 
-- **Shapes:** platforms, cubes, beams, walls, cylinders, discs, spheres and cones, at any size and in any colour.
-- **Smart pieces:** ramps, stairs, curves that bank and climb, loops and corkscrews, tubes, half pipes, pillar rows, zigzags and hoops. Change a number and the whole thing rebuilds.
-- **Gameplay:** spawn, finish, checkpoints, kill zones, bounce pads, boost pads, speed zones, gravity zones, wind, slow motion, teleporters, triggers and message zones.
-- **Game parts:** real pieces from Hyperballin, like the rounded track, half tunnels, the spinning striped plate, boost and bounce pillars, hook points, the marble and the gorilla.
-- **Motion:** anything can move along a path, spin, swing or blink on and off. It can start right away or wait for a trigger, so you can build doors, crushers and collapsing floors.
-- **Editing:** move, rotate and scale gizmos, snapping, box select, groups, copy and paste, an array tool for making rows and spirals of copies, mirroring, and undo.
-- **Preview:** a time scrubber plays every moving part so you can check timing before you test in game.
-- **Map settings:** name, author, difficulty, gem times, and rules for gravity, run speed, jump height, fall limit, time limit and required checkpoints.
+- **Marbles are the real `BP_Marble1`.** Every marble is about 15.5 m across, same as in the game, and they only differ in colour.
+  - The colours are the game's six gem materials: coral, ember, lime, yellow, magenta and mint, plus the rare white feather marble.
+  - **Random** uses the same odds the game uses, so about half of them come out coral.
+- **Three ways a marble can behave:**
+  - **Floats**: hangs in place and drifts back after you jump off.
+  - **Drifts**: no gravity, keeps going wherever you push it.
+  - **Rolls**: normal gravity, like in the game.
+- **Marble shapes:** lines that bend, climb and wiggle, zigzags, rings, spirals and loose clouds. Change a number and the whole set rebuilds.
+- **Marble spawner:** works like the spawner on every stage of the game. It drops a marble every 0.35 s by default and throws it forward with some spread. Give it motion and it runs ahead of you down the track, which is exactly how the game's first map works. Press play at the bottom to watch it throw marbles in the editor.
+- **Start:** like the game's respawn, a fresh marble appears under you, already moving, every time you start or fall.
+- **Wooden track:** straights, bends that bank and drop, half pipes and kickers, for rolling marbles to run on.
+- **Gameplay:** finish rings, checkpoints, kill zones, bounce and boost pads, speed, gravity, wind, slow motion, teleporters, triggers and messages.
+- **Game parts:** real pieces from the game, like the stage track, half tunnels, wall blocks, low ceilings, spinning plates, pillars and hook points. Each one shows its true size.
+- **Motion:** anything can move along a path, spin, swing or blink. It can start right away or wait for a trigger.
+- **Editing:**
+  - move, rotate and scale gizmos, with snapping
+  - box select, groups, copy and paste
+  - an array tool for rows and spirals of copies
+  - mirroring and undo
+- **Looks like the game:** the lavender night sky with the moon, glassy patterned marbles, wooden tracks and the dither filter the game draws through. You can turn the dither off.
 - **Files:** maps save as `.hbmap` files. Drag one onto the page to open it.
 
-<img src="docs/builderballin-inspector.png" alt="Editing a moving platform in Builderballin" width="880">
+<img src="docs/builderballin-inspector.png" alt="The Downhill map in Builderballin with its spawner throwing marbles down the track" width="880">
 
 ### Playing your maps
 
@@ -97,13 +109,15 @@ Making a basic map takes a minute: pick a piece, click to place it, drag to pain
 
 1. Press **Export map** in Builderballin to download the `.hbmap` file.
 2. In Hyperboi, open **Maps** and drop the file in.
-3. Load into any level in the game and press **Play**. The map is built up in the sky above the level and you're dropped at its spawn.
+3. Load into any level in the game and press **Play**. The map is built 22 km up in the sky, out of the way of the real stages, and you're dropped onto a marble at its Start.
 
 The Maps page shows your run time, checkpoints and resets live. Each map remembers your best time and the gem you earned. Leave the map and you're put back where you were.
 
-The mod also tries to add **Custom maps** to the game's own main menu, next to Options. Pick a map there and the game starts with it loaded.
+The mod also adds **Custom maps** to the game's own Options menu, under Full screen and Discord. Pick a map there and the game starts with it loaded.
 
-Under the hood, the map is built from Unreal's own basic shapes plus the game's real meshes. Moving parts are updated every frame, and zones are checked against your position as you play.
+Under the hood, every marble is a real `BP_Marble1` with the right gem material, so you can ride, steer and dash them like normal. Tracks use the game's wood, game parts are the real meshes, moving parts are updated every frame, and zones are checked against your position as you play.
+
+If something doesn't load, press **What the mod says** on the Maps page. It shows what the in-game mod wrote while loading the map and adding the menu entry.
 
 ## Hotkeys
 
@@ -182,7 +196,7 @@ Builderballin has no build step. To run it locally, serve the `builderballin` fo
 - **UE4SS might not support Unreal 5.8 yet.** If it doesn't, the game opens like nothing happened. Reinstall the hook once a newer UE4SS build is out.
 - **Check Windows Defender.** It sometimes quarantines `dwmapi.dll` (that's UE4SS's loader). Look in Protection history.
 - **Close the game before installing.** The game locks its files while it's running.
-- **A map won't load?** Check `ue4ss/Mods/Hyperboi/bridge/maps_log.txt` in the game folder. It lists any pieces the game couldn't find.
+- **A map won't load?** Press **What the mod says** on the Maps page. It lists any pieces the game couldn't find.
 
 ## Credits
 

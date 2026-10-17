@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('hb', {
     remove: (f) => ipcRenderer.invoke('maps:remove', f),
     folder: () => ipcRenderer.invoke('maps:folder'),
     builder: () => ipcRenderer.invoke('maps:builder'),
+    log: () => ipcRenderer.invoke('maps:log'),
     pathFor: (file) => {
       try {
         return webUtils.getPathForFile(file);

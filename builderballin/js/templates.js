@@ -3,6 +3,7 @@ import { blankMap, newObject, blankAnim } from './mapfile.js';
 function make(map, piece, pos, extra = {}) {
   const o = newObject(piece, pos);
   if (extra.size) o.scale = extra.size.map((v) => v / 100);
+  if (extra.scale) o.scale = extra.scale;
   if (extra.rot) o.rot = extra.rot;
   if (extra.color) o.color = extra.color;
   if (extra.p) Object.assign(o.p, extra.p);
@@ -17,73 +18,87 @@ function make(map, piece, pos, extra = {}) {
 function blank() {
   const m = blankMap();
   m.meta.name = 'Untitled map';
-  make(m, 'platform', [0, 0, -25], { size: [600, 600, 50] });
-  make(m, 'spawn', [0, 0, 0]);
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 3000 } });
+  make(m, 'marble_line', [5000, 0, 800], { p: { count: 5, spacing: 4800, rise: 300, mode: 'float' } });
+  make(m, 'finish', [34000, 0, 3000], { size: [12000, 12000, 12000] });
+  make(m, 'kill', [15000, 0, -40000], { size: [200000, 200000, 2000] });
   return m;
 }
 
-function starter() {
+function hop() {
   const m = blankMap();
-  m.meta.name = 'First roll';
-  m.meta.description = 'A short warm-up with a ramp, a bend, some pillars, a bounce and a moving bridge.';
+  m.meta.name = 'Marble hop';
+  m.meta.description = 'Floating marbles all the way. Lines, a zigzag, a spiral and a ring to land on.';
   m.meta.difficulty = 'Easy';
-  m.meta.gems = { diamond: 18, emerald: 22, gold: 28, steel: 40, rock: 60 };
-  make(m, 'platform', [0, 0, -25], { size: [600, 600, 50], color: '#eef1f8' });
-  make(m, 'spawn', [0, 0, 0]);
-  make(m, 'sign', [900, 0, 450], { rot: [0, 180, 0], p: { text: 'Roll!', height: 160 } });
-  make(m, 'ramp', [300, 0, 0], { p: { length: 900, rise: 300, width: 400, thickness: 40 } });
-  make(m, 'platform', [1500, 0, 275], { size: [600, 600, 50], color: '#6e8fe0' });
-  make(m, 'curve', [1800, 0, 280], { p: { radius: 1000, angle: 90, width: 400, thickness: 40, bank: 12, rise: 0, segments: 18 } });
-  make(m, 'platform', [2800, 1150, 275], { size: [500, 500, 50] });
-  make(m, 'pillars', [2800, 1650, 0], { rot: [0, 90, 0], p: { count: 5, spacing: 380, height: 300, diameter: 200, step: 0 }, color: '#1c3faa' });
-  make(m, 'kill', [2800, 2400, -200], { size: [1600, 2000, 100] });
-  make(m, 'platform', [2800, 3500, 275], { size: [700, 700, 50] });
-  make(m, 'checkpoint', [2800, 3500, 450], { size: [700, 700, 300], p: { order: 1 } });
-  make(m, 'bounce', [2800, 3500, 340], { size: [220, 220, 80], p: { power: 2400, keep: true } });
-  make(m, 'platform', [2800, 4500, 1175], { size: [600, 600, 50], color: '#f2b33d' });
-  make(m, 'platform', [2800, 5100, 1175], { size: [400, 400, 50], color: '#f08bb4', name: 'Moving bridge', anim: { move: { points: [[0, 1300, 0]], duration: 3.2, mode: 'pingpong', ease: 'smooth', delay: 0 } } });
-  make(m, 'platform', [2800, 7000, 1175], { size: [800, 800, 50], color: '#15161c' });
-  make(m, 'finish', [2800, 7000, 1350], { size: [800, 800, 300] });
-  make(m, 'light', [2800, 7000, 1700], { color: '#ffd9a0' });
+  m.meta.gems = { diamond: 25, emerald: 32, gold: 42, steel: 60, rock: 90 };
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 4000, color: 'coral' } });
+  make(m, 'sign', [6000, -9000, 6000], { rot: [0, 90, 0], p: { text: 'floors hurt. ride the marbles', height: 2200 } });
+  make(m, 'marble_line', [5200, 0, 600], { p: { count: 7, spacing: 4800, rise: 500, turn: 4, color: 'cycle', mode: 'float' } });
+  make(m, 'marble_zig', [37000, 7500, 4200], { rot: [0, 28, 0], p: { count: 8, spacing: 4200, offset: 2400, rise: 300, color: 'lime', mode: 'float' } });
+  make(m, 'checkpoint', [68000, 23000, 8000], { size: [9000, 9000, 7000] });
+  make(m, 'marble_ring', [80000, 30000, 7500], { p: { count: 12, radius: 9000, wobble: 1500, waves: 3, color: 'yellow', mode: 'float' } });
+  make(m, 'marble_spiral', [80000, 30000, 9500], { p: { count: 16, radius: 4600, turn: 32, rise: 1100, color: 'magenta', mode: 'float' } });
+  make(m, 'marble_line', [86000, 34000, 27500], { rot: [0, 35, 0], p: { count: 6, spacing: 5200, rise: -400, color: 'mint', mode: 'drift' } });
+  make(m, 'finish', [116000, 54000, 25000], { rot: [0, 35, 0], size: [14000, 14000, 14000] });
+  make(m, 'kill', [60000, 25000, -40000], { size: [300000, 300000, 2000] });
+  make(m, 'light', [80000, 30000, 16000], { color: '#ffb0ff', p: { intensity: 400000, radius: 40000 } });
   return m;
 }
 
-function showcase() {
+function downhill() {
+  const m = blankMap();
+  m.meta.name = 'Downhill';
+  m.meta.description = 'Built the way the real stages are: a wooden track, a spawner running ahead of you throwing marbles down it, and rings at the end of a kicker.';
+  m.meta.difficulty = 'Medium';
+  m.meta.gems = { diamond: 20, emerald: 26, gold: 34, steel: 48, rock: 70 };
+  const wood = { width: 9000, thickness: 400, walls: 1500 };
+  make(m, 'track', [0, 0, 0], { p: { ...wood, length: 30000, drop: 4000 } });
+  make(m, 'track_curve', [30000, 0, -4000], { p: { radius: 20000, angle: 90, width: 9000, thickness: 400, bank: 8, rise: -3000, segments: 24 } });
+  make(m, 'track', [50000, 20000, -7000], { rot: [0, 90, 0], p: { ...wood, length: 40000, drop: 6000 } });
+  make(m, 'track_kicker', [50000, 60000, -13000], { rot: [0, 90, 0], p: { radius: 15000, angle: 35, width: 9000, thickness: 400, segments: 12 } });
+  make(m, 'spawn', [2500, 0, -330], { p: { mode: 'roll', speed: 8000 } });
+  make(m, 'spawner', [3000, 0, 8000], {
+    name: 'Runs ahead of you',
+    p: { interval: 0.45, spread: 6000, speed: 9000, angle: 30, max: 70, mode: 'roll', color: 'random' },
+    anim: { move: { points: [[20000, 0, -3000], [40000, 8000, -5500], [47000, 20000, -7000], [47000, 50000, -11000]], duration: 16, mode: 'loop', ease: 'linear', delay: 0 } }
+  });
+  make(m, 'checkpoint', [50000, 30000, -5500], { size: [9000, 9000, 6000] });
+  make(m, 'marble_line', [50000, 78000, -8200], { rot: [0, 90, 0], p: { count: 4, spacing: 5000, rise: 700, mode: 'float', color: 'yellow' } });
+  make(m, 'finish', [50000, 104000, -4500], { rot: [0, 90, 0], size: [15000, 15000, 15000] });
+  make(m, 'g_pillar', [22000, 16000, -48000]);
+  make(m, 'g_pillar', [64000, 38000, -50000]);
+  make(m, 'g_block', [-14000, 0, -6000], { rot: [0, 0, -90], scale: [10, 10, 10] });
+  make(m, 'sign', [9000, -8000, 4000], { rot: [0, 180, 0], p: { text: 'keep rolling', height: 2400 } });
+  make(m, 'kill', [40000, 50000, -32000], { size: [240000, 240000, 2000] });
+  return m;
+}
+
+function fever() {
   const m = blankMap();
   m.meta.name = 'Fever lab';
-  m.meta.description = 'Shows off triggers, spinners, a teleporter, a wind tube, low gravity and blinking floors.';
+  m.meta.description = 'Drifting marbles in slow motion, a ring around a spiral, low gravity and a gate that opens on a trigger.';
   m.meta.difficulty = 'Hard';
-  m.meta.gems = { diamond: 35, emerald: 45, gold: 60, steel: 90, rock: 140 };
-  make(m, 'platform', [0, 0, -25], { size: [800, 800, 50] });
-  make(m, 'spawn', [-200, 0, 0]);
-  make(m, 'stairs', [400, 0, 0], { p: { steps: 8, run: 120, riseStep: 45, width: 400, gap: 0 }, color: '#6e8fe0' });
-  make(m, 'platform', [1700, 0, 335], { size: [1000, 800, 50] });
-  make(m, 'cube', [1700, 0, 410], { size: [60, 700, 100], color: '#e23a2e', name: 'Sweeper', anim: { spin: { axis: 'world-up', speed: 90 } } });
-  make(m, 'trigger', [1700, 0, 500], { size: [300, 300, 300], p: { channel: 'gate', once: true } });
-  make(m, 'wall', [2240, 0, 560], { size: [40, 800, 400], color: '#1c3faa', name: 'Gate', anim: { start: 'trigger', channel: 'gate', move: { points: [[0, 0, -450]], duration: 1.2, mode: 'once', ease: 'smooth', delay: 0 } } });
-  make(m, 'tube', [2300, 0, 360], { p: { radius: 350, length: 2000, sides: 18, thickness: 30 }, color: '#8fe3c8' });
-  make(m, 'wind', [3300, 0, 700], { size: [2000, 600, 600], p: { force: 1200 } });
-  make(m, 'platform', [4800, 0, 335], { size: [1000, 1000, 50] });
-  make(m, 'checkpoint', [4800, 0, 510], { size: [1000, 1000, 300], p: { order: 1 } });
-  const tp = make(m, 'teleport', [5100, 0, 485], { size: [200, 200, 250] });
-  const ex = make(m, 'exit', [5000, 2600, 2400]);
-  tp.p.exit = ex.id;
-  ex.p.link = tp.id;
-  make(m, 'disc', [5000, 2600, 2385], { size: [700, 700, 30], color: '#7b5cd6' });
-  make(m, 'gravity', [5000, 3800, 2900], { size: [1200, 2000, 1600], p: { scale: 0.25 } });
-  for (let i = 0; i < 4; i++) make(m, 'platform', [5000, 3200 + i * 450, 2385 + i * 120], { size: [350, 350, 40], color: i % 2 ? '#f08bb4' : '#ffffff', group: 'Blinkers', anim: { blink: { on: 1.6, off: 0.8, offset: i * 0.6 } } });
-  make(m, 'hoop', [5000, 5300, 3200], { rot: [0, 90, 0], p: { radius: 400, sides: 20, thickness: 40 } });
-  make(m, 'platform', [5000, 6400, 2585], { size: [900, 900, 50], color: '#15161c' });
-  make(m, 'finish', [5000, 6400, 2760], { size: [900, 900, 300] });
-  make(m, 'kill', [3000, 3000, -600], { size: [12000, 12000, 100] });
-  make(m, 'light', [1700, 0, 900], { color: '#ffb0c8' });
-  make(m, 'light', [5000, 6400, 3000], { color: '#b8c8ff' });
-  make(m, 'sign', [5600, 0, 900], { rot: [0, 180, 0], p: { text: 'Jump in', height: 120 } });
+  m.meta.gems = { diamond: 40, emerald: 52, gold: 68, steel: 95, rock: 140 };
+  make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speed: 5000, color: 'mint' } });
+  make(m, 'marble_line', [5200, 0, 500], { p: { count: 5, spacing: 5000, rise: 0, color: 'mint', mode: 'float' } });
+  make(m, 'slowmo', [42000, 0, 3000], { size: [30000, 30000, 18000], p: { speed: 0.45 } });
+  make(m, 'marble_cloud', [42000, 0, 3000], { p: { count: 26, sizeX: 26000, sizeY: 22000, sizeZ: 9000, gap: 1500, seed: 7, color: 'cycle', mode: 'drift' } });
+  make(m, 'trigger', [56000, 0, 4000], { size: [8000, 20000, 12000], p: { channel: 'gate', once: true } });
+  make(m, 'wall', [62000, 0, 4000], { rot: [0, 90, 0], size: [24000, 600, 16000], color: '#2a2740', name: 'Gate', anim: { start: 'trigger', channel: 'gate', move: { points: [[0, 0, -22000]], duration: 1.4, mode: 'once', ease: 'smooth', delay: 0 } } });
+  make(m, 'marble_line', [60000, 0, 3500], { p: { count: 4, spacing: 5200, rise: 400, color: 'lime', mode: 'float' } });
+  make(m, 'marble_ring', [92000, 0, 6000], { p: { count: 14, radius: 11000, wobble: 2000, waves: 2, color: 'yellow', mode: 'float' } });
+  make(m, 'marble_spiral', [92000, 0, 8000], { p: { count: 18, radius: 5000, turn: 30, rise: 1200, color: 'magenta', mode: 'float' }, anim: { spin: { axis: 'world-up', speed: 12 } } });
+  make(m, 'gravity', [92000, 0, 18000], { size: [30000, 30000, 30000], p: { scale: 0.35 } });
+  make(m, 'finish', [92000, 0, 36000], { rot: [-90, 0, 0], size: [14000, 14000, 14000] });
+  make(m, 'kill', [50000, 0, -40000], { size: [300000, 300000, 2000] });
+  make(m, 'light', [42000, 0, 9000], { color: '#9dffca', p: { intensity: 400000, radius: 40000 } });
+  make(m, 'light', [92000, 0, 20000], { color: '#ff8165', p: { intensity: 400000, radius: 40000 } });
   return m;
 }
 
 export const TEMPLATES = [
-  { name: 'Blank', blurb: 'A spawn on a single platform. Build from nothing.', make: blank },
-  { name: 'First roll', blurb: 'A short starter course to pull apart and learn from.', make: starter },
-  { name: 'Fever lab', blurb: 'Triggers, spinners, teleporter, wind tube and low gravity.', make: showcase }
+  { name: 'Blank', blurb: 'A start, a few marbles and the finish rings. Build from there.', make: blank },
+  { name: 'Marble hop', blurb: 'Floating marbles all the way. The easiest kind of map to make.', make: hop },
+  { name: 'Downhill', blurb: 'Like the real stages: wooden track, a spawner throwing marbles, a kicker into the rings.', make: downhill },
+  { name: 'Fever lab', blurb: 'Slow motion drifters, a spinning spiral, low gravity and a trigger gate.', make: fever }
 ];

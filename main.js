@@ -5,7 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
-const MOD_VERSION = '3';
+const MOD_VERSION = '4';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;
@@ -672,6 +672,8 @@ function readMapMeta(file, full) {
       difficulty: (data.meta && data.meta.difficulty) || '',
       gems: (data.meta && data.meta.gems) || {},
       parts: data.build ? (data.build.parts || []).length : 0,
+      marbles: data.build ? (data.build.marbles || []).length : 0,
+      spawners: data.build ? (data.build.spawners || []).length : 0,
       zones: data.build ? (data.build.zones || []).length : 0,
       checkpoints: data.build ? data.build.checkpoints || 0 : 0,
       ready: !!data.build,
@@ -760,6 +762,19 @@ ipcMain.handle('maps:folder', () => {
   if (d) shell.openPath(d);
 });
 ipcMain.handle('maps:builder', () => shell.openExternal(BUILDER_URL));
+ipcMain.handle('maps:log', () => {
+  const h = hookLayout(store.gameDir);
+  if (!h) return 'Find the game first.';
+  const out = [];
+  for (const [f, label] of [['maps_log.txt', 'Maps'], ['menu_log.txt', 'Menu'], ['log.txt', 'Mod']]) {
+    const p = path.join(h.bridge, f);
+    if (!exists(p)) continue;
+    const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean);
+    out.push(`${label}\n${lines.slice(-60).join('\n')}`);
+  }
+  if (exists(path.join(h.bridge, 'menu_dump.txt'))) out.push('Menu: found the main menu and read its layout.');
+  return out.length ? out.join('\n\n') : 'Nothing yet. Start the game with the hook on, then check again.';
+});
 
 ipcMain.handle('external', (_e, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);

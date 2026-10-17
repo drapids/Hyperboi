@@ -1,8 +1,8 @@
-import { PIECE, defaultParams, localParts, pieceColor } from './pieces.js';
+import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R } from './pieces.js';
 import { axesFromRot, rotFromAxes, applyAxes, composeAxes, add, hadamard } from './ue.js';
 
 export const FORMAT = 'builderballin';
-export const VERSION = 1;
+export const VERSION = 2;
 
 export const DIFFICULTIES = ['Chill', 'Easy', 'Medium', 'Hard', 'Brutal', 'Fever'];
 export const GEM_NAMES = ['diamond', 'emerald', 'gold', 'steel', 'rock'];
@@ -16,14 +16,14 @@ export function blankMap() {
     format: FORMAT,
     version: VERSION,
     meta: { name: 'Untitled map', author: '', description: '', difficulty: 'Easy', gems: { diamond: 0, emerald: 0, gold: 0, steel: 0, rock: 0 }, created: Date.now(), updated: Date.now() },
-    rules: { gravity: 1, speed: 1, jump: 1, killHeight: -3000, needCheckpoints: false, timeLimit: 0 },
+    rules: { gravity: 1, speed: 1, jump: 1, killHeight: -60000, needCheckpoints: false, timeLimit: 0 },
     objects: []
   };
 }
 
 export function newObject(pieceId, pos, extra = {}) {
   const piece = PIECE[pieceId];
-  const s = piece.kind === 'smart' || piece.kind === 'game' ? [1, 1, 1] : (piece.size || [100, 100, 100]).map((v) => v / 100);
+  const s = initialScale(piece);
   return {
     id: uid(),
     piece: pieceId,
@@ -84,7 +84,7 @@ export function flatten(map) {
   const objects = map.objects;
   const centers = groupCenters(objects);
   const byId = Object.fromEntries(objects.map((o) => [o.id, o]));
-  const build = { spawn: null, parts: [], zones: [], checkpoints: 0 };
+  const build = { spawn: null, parts: [], zones: [], marbles: [], spawners: [], checkpoints: 0, marbleRadius: MARBLE_R };
   for (const o of objects) {
     const piece = PIECE[o.piece];
     if (!piece) continue;
@@ -92,7 +92,33 @@ export function flatten(map) {
     const anim = resolveAnim(o, axes, centers);
     const common = { id: o.id, anim };
     if (piece.kind === 'marker') {
-      if (piece.marker === 'spawn' && !build.spawn) build.spawn = { pos: o.pos.slice(), yaw: o.rot[1] };
+      if (piece.marker === 'spawn' && !build.spawn) {
+        const prm = { ...defaultParams(piece), ...o.p };
+        build.spawn = { pos: o.pos.slice(), yaw: o.rot[1], speed: prm.speed, color: prm.color, mode: prm.mode, gems: gemList(prm.color) };
+      }
+      continue;
+    }
+    if (piece.kind === 'marble' || piece.kind === 'marbles') {
+      const prm = { ...defaultParams(piece), ...o.p };
+      const fwd = axes[0];
+      const push = prm.push || 0;
+      marblePoints(o).forEach((m, i) => {
+        build.marbles.push({
+          id: `${o.id}:${i}`,
+          pos: add(o.pos, applyAxes(axes, m.pos)),
+          gem: m.gem,
+          mat: GEM[m.gem].mat,
+          feather: m.gem === 'feather',
+          mode: prm.mode,
+          vel: push ? fwd.map((v) => v * push) : null,
+          anim
+        });
+      });
+      continue;
+    }
+    if (piece.kind === 'spawner') {
+      const prm = { ...defaultParams(piece), ...o.p };
+      build.spawners.push({ ...common, pos: o.pos.slice(), rot: o.rot.slice(), interval: prm.interval, spread: prm.spread, speed: prm.speed, angle: prm.angle, max: prm.max, mode: prm.mode, channel: (prm.channel || '').trim(), color: prm.color, gems: gemList(prm.color) });
       continue;
     }
     if (piece.kind === 'zone') {
@@ -103,6 +129,13 @@ export function flatten(map) {
       }
       if (piece.zone === 'checkpoint') build.checkpoints += 1;
       build.zones.push(z);
+      if (piece.rings) {
+        const r = Math.min(o.scale[1], o.scale[2]) * 50;
+        [1, 0.82, 0.64, 0.46, 0.28].forEach((f, k) => {
+          const s = (r * f) / 125;
+          build.parts.push({ ...common, id: `${o.id}:ring${k}`, kind: 'mesh', path: '/Game/Assets/Misc/SM_Torus', pos: o.pos.slice(), rot: rotFromAxes(composeAxes(axes, axesFromRot([90, 0, k * 18]))), scale: [s, s, s * 1.6], color: null, ice: false, hidden: false, collide: false, spinRing: k });
+        });
+      }
       if (piece.pad) {
         const hz = o.scale[2] * 50;
         build.parts.push({ ...common, id: o.id + ':pad', kind: 'shape', shape: piece.zone === 'bounce' ? 'cylinder' : 'cube', pos: add(o.pos, applyAxes(axes, [0, 0, -hz + 10])), rot: o.rot.slice(), scale: [o.scale[0] * 0.95, o.scale[1] * 0.95, 0.2], color: pieceColor(piece), ice: false, hidden: false, collide: true });
@@ -133,6 +166,7 @@ export function flatten(map) {
         rot: rotFromAxes(wa),
         scale: hadamard(lp.scale, o.scale),
         color: o.color,
+        mat: lp.mat || (o.look.wood ? 'wood' : null),
         ice: o.look.ice,
         hidden: !o.look.visible,
         collide: o.look.collide
@@ -142,11 +176,17 @@ export function flatten(map) {
   return build;
 }
 
+function gemList(setting) {
+  if (setting === 'random' || !setting) return null;
+  if (setting === 'cycle') return ['coral', 'lime', 'yellow', 'magenta', 'mint'].map((g) => GEM[g].mat);
+  return GEM[setting] ? [GEM[setting].mat] : null;
+}
+
 export function exportMap(map) {
   const out = JSON.parse(JSON.stringify(map));
   out.meta.updated = Date.now();
   out.build = flatten(map);
-  out.build.counts = { parts: out.build.parts.length, zones: out.build.zones.length };
+  out.build.counts = { parts: out.build.parts.length, zones: out.build.zones.length, marbles: out.build.marbles.length, spawners: out.build.spawners.length };
   return JSON.stringify(out);
 }
 
@@ -160,8 +200,10 @@ export function importMap(text) {
     ...data,
     meta: { ...base.meta, ...data.meta, gems: { ...base.meta.gems, ...(data.meta && data.meta.gems) } },
     rules: { ...base.rules, ...data.rules },
-    objects: (data.objects || []).filter((o) => PIECE[o.piece]).map((o) => ({ ...newObject(o.piece, o.pos || [0, 0, 0]), ...o, look: { ice: false, visible: true, collide: true, ...o.look } }))
+    objects: (data.objects || []).map((o) => (o.piece === 'g_marble' ? { ...o, piece: 'marble', scale: [1, 1, 1], p: {} } : o)).filter((o) => PIECE[o.piece]).map((o) => ({ ...newObject(o.piece, o.pos || [0, 0, 0]), ...o, look: { ice: false, visible: true, collide: true, ...o.look } }))
   };
+  map.version = VERSION;
+  map.oldScale = (data.version || 1) < 2;
   delete map.build;
   return map;
 }
@@ -169,15 +211,21 @@ export function importMap(text) {
 export function validate(map) {
   const issues = [];
   const count = (id) => map.objects.filter((o) => o.piece === id).length;
-  if (!count('spawn')) issues.push({ level: 'bad', text: 'Add a spawn so the game knows where to start you.', fix: 'spawn' });
-  if (count('spawn') > 1) issues.push({ level: 'warn', text: 'There are several spawns. Only the first one is used.' });
-  if (!count('finish')) issues.push({ level: 'bad', text: 'Add a finish so runs can end.', fix: 'finish' });
+  if (!count('spawn')) issues.push({ level: 'bad', text: 'Add a Start so the game knows where to drop you.', fix: 'spawn' });
+  if (count('spawn') > 1) issues.push({ level: 'warn', text: 'There are several Starts. Only the first one is used.' });
+  if (!count('finish')) issues.push({ level: 'bad', text: 'Add finish rings so runs can end.', fix: 'finish' });
+  const kinds = map.objects.map((o) => PIECE[o.piece].kind);
+  if (!kinds.some((k) => k === 'marble' || k === 'marbles' || k === 'spawner')) issues.push({ level: 'warn', text: 'No marbles yet. Floors hurt in Hyperballin, so you need marbles to ride.', fix: 'marble_line', cat: 'marbles' });
+  const rollers = map.objects.filter((o) => (PIECE[o.piece].kind === 'spawner' || PIECE[o.piece].kind.startsWith('marble')) && (o.p.mode ?? PIECE[o.piece].params.find((x) => x.key === 'mode')?.def) === 'roll');
+  if (rollers.length && !kinds.some((k) => k === 'smart' || k === 'solid' || k === 'game')) issues.push({ level: 'warn', text: 'Some marbles roll but there is nothing under them. Add a track or switch them to Floats.', fix: 'track', cat: 'track' });
   const ids = new Set(map.objects.map((o) => o.id));
   for (const o of map.objects) {
     if (o.piece === 'teleport' && !ids.has(o.p.exit)) issues.push({ level: 'warn', text: `${o.name || 'A teleporter'} has no exit.`, id: o.id });
     if (o.anim && o.anim.start === 'trigger' && !map.objects.some((t) => t.piece === 'trigger' && (t.p.channel || 'A') === (o.anim.channel || 'A'))) issues.push({ level: 'warn', text: `${o.name || PIECE[o.piece].name} waits for channel ${o.anim.channel}, but no trigger sends it.`, id: o.id });
   }
-  const parts = flatten(map).parts.length;
+  const fb = flatten(map);
+  const parts = fb.parts.length;
   if (parts > 4000) issues.push({ level: 'warn', text: `${parts} parts is a lot. The game might stutter while loading it.` });
+  if (fb.marbles.length > 400) issues.push({ level: 'warn', text: `${fb.marbles.length} marbles is a lot. The game itself caps out around 330.` });
   return issues;
 }

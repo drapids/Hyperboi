@@ -120,6 +120,23 @@ local function findOptions(m)
     return btn, hit
 end
 
+local function findNamed(m, name)
+    local tree = safe(function() return m.WidgetTree end)
+    local root = valid(tree) and safe(function() return tree.RootWidget end)
+    local hit = nil
+    walk(root, 0, function(w)
+        if hit then return false end
+        if objName(w) == name then
+            hit = w
+            return false
+        end
+    end)
+    if hit then return hit end
+    local direct = safe(function() return m[name] end)
+    if valid(direct) then return direct end
+    return nil
+end
+
 local function construct(clsPath, outer, name)
     local c = StaticFindObject(clsPath)
     if not valid(c) then return nil end
@@ -151,12 +168,34 @@ local function copySlot(from, to)
     safe(function() to:SetSize(from.Size) end)
 end
 
+local function injectOptions(m, tree)
+    local box = findNamed(m, "OptionsBox")
+    local styleBtn = findNamed(m, "opt_fullscreen") or findNamed(m, "opt_discord")
+    local styleText = findNamed(m, "txt_Fullscreen") or findNamed(m, "txt_discord")
+    if not valid(box) or not valid(styleBtn) then
+        log("OptionsBox not found, falling back")
+        return false
+    end
+    local b = makeButton(tree, "HB_CustomMaps", "Custom maps", styleBtn, styleText)
+    if not b then
+        log("couldn't construct button")
+        return false
+    end
+    local slot = safe(function() return box:AddChildToVerticalBox(b) end) or safe(function() return box:AddChild(b) end)
+    copySlot(safe(function() return styleBtn.Slot end), slot)
+    ourBtn = b
+    injected = true
+    log("added Custom maps to the Options menu")
+    return true
+end
+
 local function inject(m)
     local tree = safe(function() return m.WidgetTree end)
     if not valid(tree) then
         log("no widget tree")
         return
     end
+    if injectOptions(m, tree) then return end
     local optBtn, optText = findOptions(m)
     if not optBtn then
         log("couldn't find an Options button" .. (optText and (" (found text in " .. className(optText) .. ")") or ""))
@@ -201,6 +240,10 @@ local function openPicker()
     local root = valid(tree) and safe(function() return tree.RootWidget end)
     if not valid(root) then return end
     local optBtn, optText = findOptions(menu)
+    local fsBtn = findNamed(menu, "opt_fullscreen")
+    local fsText = findNamed(menu, "txt_Fullscreen")
+    if valid(fsBtn) then optBtn = fsBtn end
+    if valid(fsText) then optText = fsText end
     local border = construct("/Script/UMG.Border", tree, "HB_MapPicker")
     local box = construct("/Script/UMG.VerticalBox", tree, "HB_MapList")
     if not border or not box then

@@ -2,7 +2,19 @@ local json = require("json")
 
 local M = {}
 
-local ORIGIN = { X = 0, Y = 0, Z = 300000 }
+local ORIGIN = { X = 0, Y = 0, Z = 2200000 }
+local MARBLE_CLASS = "/Game/Blueprints/BP_Marble1"
+local WOOD = "/Game/Fab/Bedroom1/Wooden_part_001"
+local MARBLE_R = 778
+local GEM_ODDS = {
+    { "/Game/Assets/Materials/MI_GemBasic2", 0.386 },
+    { "/Game/Assets/Materials/MI_GemBasic1", 0.077 },
+    { "/Game/Assets/Materials/MI_GemBasic4", 0.2 },
+    { "/Game/Assets/Materials/MI_GemBasic6", 0.133 },
+    { "/Game/Assets/Materials/MI_GemBasic5", 0.111 },
+    { "/Game/Assets/Materials/MI_GemBasic3", 0.093 },
+}
+local FEATHER = "/Game/Marble_Materials_4K/Materials/MI_Marble_01"
 local CAPSULE = { 38, 38, 90 }
 local BATCH = 40
 
@@ -202,7 +214,10 @@ local function spawnPart(world, part)
         if comp then
             safe(function() comp:SetMobility(2) end)
             safe(function() comp:SetStaticMesh(mesh) end)
-            if part.kind == "shape" and part.color then
+            local wood = part.mat == "wood" and asset(WOOD)
+            if wood then
+                safe(function() comp:SetMaterial(0, wood) end)
+            elseif part.kind == "shape" and part.color then
                 local base = asset("/Engine/BasicShapes/BasicShapeMaterial")
                 if base then
                     local mi = safe(function() return comp:CreateDynamicMaterialInstance(0, base, FName("None")) end)
@@ -262,6 +277,57 @@ local function spawnPart(world, part)
     if not actor then return nil end
     safe(function() actor:SetActorScale3D({ X = s[1], Y = s[2], Z = s[3] }) end)
     return actor
+end
+
+local function randomGem()
+    local r = math.random()
+    local acc = 0
+    for _, g in ipairs(GEM_ODDS) do
+        acc = acc + g[2]
+        if r < acc then return g[1] end
+    end
+    return GEM_ODDS[1][1]
+end
+
+local function marbleComp(a)
+    local c = safe(function() return a.StaticMesh end)
+    if valid(c) then return c end
+    return nil
+end
+
+local function addr(o)
+    return o and safe(function() return o:GetAddress() end) or nil
+end
+
+local function spawnMarble(world, pos, opts)
+    local c = asset(MARBLE_CLASS, "_C")
+    if not c then return nil end
+    local a = spawnActor(world, c, W(pos), { Pitch = 0, Yaw = opts.yaw or 0, Roll = 0 })
+    if not a then return nil end
+    local comp = marbleComp(a)
+    local matPath = opts.mat or randomGem()
+    local feather = opts.feather or matPath == FEATHER
+    if comp then
+        local m = asset(matPath)
+        if m then safe(function() comp:SetMaterial(0, m) end) end
+        safe(function() a.IsFeather = feather end)
+        if feather then safe(function() comp:SetMassOverrideInKg(FName("None"), 38, true) end) end
+        if opts.mode == "float" or opts.mode == "drift" then
+            safe(function() comp:SetEnableGravity(false) end)
+            safe(function() comp:SetLinearDamping(opts.mode == "float" and 0.35 or 0.02) end)
+            safe(function() comp:SetAngularDamping(0.6) end)
+        end
+        if opts.vel then
+            local v = opts.vel
+            safe(function() comp:SetPhysicsLinearVelocity({ X = v[1], Y = v[2], Z = v[3] }, false, FName("None")) end)
+        end
+    end
+    safe(function() a.NotGroundedTime = 1e12 end)
+    return { actor = a, comp = comp, home = pos, mode = opts.mode, anim = opts.anim, axes = opts.axes, addr = addr(a) }
+end
+
+local function killMarble(m)
+    if m and valid(m.actor) then safe(function() m.actor:K2_DestroyActor() end) end
 end
 
 local function readIndex()
@@ -338,6 +404,9 @@ function M.unload(silent)
     for _, sp in ipairs(cur.spawned) do
         if valid(sp.actor) then safe(function() sp.actor:K2_DestroyActor() end) end
     end
+    for _, m in ipairs(cur.marbles) do killMarble(m) end
+    for _, sp in ipairs(cur.spawners) do for _, m in ipairs(sp.live) do killMarble(m) end end
+    killMarble(cur.startMarble)
     restoreMovement()
     ctx.setKillboxes(false)
     local ch = ctx.getChar()
@@ -408,7 +477,19 @@ function M.load(file)
         msg = nil,
         t0 = now(world),
         triggers = {},
+        marbles = {},
+        mqueue = {},
+        spawners = {},
+        startMarble = nil,
+        frame = 0,
     }
+    for _, m in ipairs(b.marbles or {}) do cur.mqueue[#cur.mqueue + 1] = m end
+    for _, sp in ipairs(b.spawners or {}) do
+        sp.axes = axesFromRot(sp.rot or { 0, 0, 0 })
+        sp.timer = 0
+        sp.live = {}
+        cur.spawners[#cur.spawners + 1] = sp
+    end
     for _, p in ipairs(b.parts or {}) do cur.queue[#cur.queue + 1] = p end
     for _, z in ipairs(b.zones or {}) do
         z.axes = axesFromRot(z.rot or { 0, 0, 0 })
@@ -419,8 +500,27 @@ function M.load(file)
     end
     lastStatus = "loading"
     ctx.setKillboxes(true)
-    log("loading " .. cur.name .. " with " .. #cur.queue .. " parts")
+    log("loading " .. cur.name .. " with " .. #cur.queue .. " parts, " .. #cur.mqueue .. " marbles and " .. #cur.spawners .. " spawners")
     return true
+end
+
+local function dropAt(ch, pos, yaw, fresh)
+    local sp = cur.build.spawn or {}
+    killMarble(cur.startMarble)
+    cur.startMarble = nil
+    local world = cur.worldObj
+    if fresh ~= false then
+        local y = (yaw or 0) * D
+        local speed = sp.speed or 10000
+        local mat = nil
+        if sp.gems and #sp.gems > 0 then mat = sp.gems[math.random(#sp.gems)] end
+        cur.startMarble = spawnMarble(world, { pos[1], pos[2], pos[3] + MARBLE_R }, { mat = mat, mode = sp.mode or "roll", yaw = yaw, vel = { math.cos(y) * speed, math.sin(y) * speed, 0 } })
+    end
+    teleport(ch, { pos[1], pos[2], pos[3] + MARBLE_R * 2 + 60 }, yaw, false)
+    safe(function()
+        local og = ch.HealthOG
+        if og and og > 0 then ch.Health = og end
+    end)
 end
 
 function M.restart()
@@ -436,13 +536,13 @@ function M.restart()
     for _, z in ipairs(cur.zones) do z.fired = false end
     cur.triggers = {}
     cur.t0 = now(cur.worldObj)
-    teleport(ch, cur.spawn.pos, cur.spawn.yaw, false)
+    dropAt(ch, cur.spawn.pos, cur.spawn.yaw)
 end
 
 local function respawn(ch, reason)
     cur.deaths = cur.deaths + 1
     local at = cur.respawnAt or { pos = cur.spawn.pos, yaw = cur.spawn.yaw }
-    teleport(ch, at.pos, at.yaw, false)
+    dropAt(ch, at.pos, at.yaw)
     if not cur.respawnAt then
         cur.runStart = nil
         cur.runTime = 0
@@ -552,6 +652,15 @@ end
 
 local function spawnBatch(world)
     local n = 0
+    if #cur.queue == 0 and #cur.mqueue > 0 then
+        while #cur.mqueue > 0 and n < BATCH do
+            local m = table.remove(cur.mqueue, 1)
+            local mb = spawnMarble(world, m.pos, { mat = m.mat, feather = m.feather, mode = m.mode, vel = m.vel, anim = m.anim, axes = axesFromRot({ 0, 0, 0 }) })
+            if mb then cur.marbles[#cur.marbles + 1] = mb else cur.failed = (cur.failed or 0) + 1 end
+            n = n + 1
+        end
+        if #cur.mqueue > 0 then return end
+    end
     while #cur.queue > 0 and n < BATCH do
         local part = table.remove(cur.queue, 1)
         local actor = spawnPart(world, part)
@@ -564,12 +673,13 @@ local function spawnBatch(world)
         end
         n = n + 1
     end
+    if #cur.queue == 0 and #cur.mqueue > 0 then return end
     if #cur.queue == 0 then
         lastStatus = "loaded"
         log(("loaded %s: %d spawned, %d failed"):format(cur.name, #cur.spawned, cur.failed or 0))
         local ch = ctx.getChar()
         applyRules()
-        if valid(ch) then teleport(ch, cur.spawn.pos, cur.spawn.yaw, false) end
+        if valid(ch) then dropAt(ch, cur.spawn.pos, cur.spawn.yaw) end
         cur.armed = true
         cur.t0 = now(world)
     end
@@ -591,10 +701,11 @@ function M.tick()
     end
     if not valid(ch) then return end
     local world = cur.worldObj
-    if #cur.queue > 0 then
+    if #cur.queue > 0 or #cur.mqueue > 0 then
         spawnBatch(world)
         return
     end
+    cur.frame = cur.frame + 1
     local t = now(world) - cur.t0
     for _, sp in ipairs(cur.animated) do
         local a = sp.part.anim
@@ -609,6 +720,7 @@ function M.tick()
             end
         end
     end
+    M.tickMarbles(ch, t)
     local p = charPos(ch)
     if not p then return end
     local cmc = ctx.getCmc()
@@ -627,7 +739,8 @@ function M.tick()
         M.restart()
         return
     end
-    if p[3] < (cur.rules.killHeight or -3000) then
+    local hp = safe(function() return ch.Health end)
+    if p[3] < (cur.rules.killHeight or -60000) or (hp and hp <= 0) then
         respawn(ch, "fall")
         return
     end
@@ -657,13 +770,88 @@ function M.tick()
     end
 end
 
+local function rideAddr(ch)
+    local lm = safe(function() return ch.LockedOnMarble end)
+    if lm and valid(lm) then return addr(lm) end
+    return nil
+end
+
+function M.tickMarbles(ch, t)
+    local world = cur.worldObj
+    local dt = math.max(0, math.min(0.1, t - (cur.lastT or t)))
+    cur.lastT = t
+    local riding = rideAddr(ch)
+    local refresh = cur.frame % 45 == 0
+    local check = cur.frame % 3 == 0
+    for _, m in ipairs(cur.marbles) do
+        if valid(m.actor) and m.comp then
+            if m.anim then
+                local pos = evalAnim(m.anim, animTime(m.anim, t), m.home, m.axes)
+                safe(function() m.comp:K2_SetWorldLocation(W(pos), false, {}, true) end)
+                safe(function() m.comp:SetPhysicsLinearVelocity({ X = 0, Y = 0, Z = 0 }, false, FName("None")) end)
+            elseif m.mode == "float" and check and m.addr ~= riding then
+                local l = safe(function() return m.comp:K2_GetComponentLocation() end)
+                if l then
+                    local dx, dy, dz = ORIGIN.X + m.home[1] - l.X, ORIGIN.Y + m.home[2] - l.Y, ORIGIN.Z + m.home[3] - l.Z
+                    local d = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    if d > 60 then
+                        local k = math.min(1.6, 4000 / d)
+                        safe(function() m.comp:SetPhysicsLinearVelocity({ X = dx * k, Y = dy * k, Z = dz * k }, false, FName("None")) end)
+                    end
+                end
+            end
+            if refresh then safe(function() m.actor.NotGroundedTime = 1e12 end) end
+        end
+    end
+    if cur.startMarble and refresh and valid(cur.startMarble.actor) then safe(function() cur.startMarble.actor.NotGroundedTime = 1e12 end) end
+    local kill = cur.rules.killHeight or -60000
+    for _, sp in ipairs(cur.spawners) do
+        local active = true
+        if sp.channel and sp.channel ~= "" then active = cur.triggers[sp.channel] ~= nil end
+        if active then
+            local pos, axes = sp.pos, sp.axes
+            if sp.anim then pos, axes = evalAnim(sp.anim, animTime(sp.anim, t), sp.pos, sp.axes) end
+            sp.timer = sp.timer - dt
+            local made = 0
+            while sp.timer <= 0 and made < 2 do
+                sp.timer = sp.timer + math.max(0.1, sp.interval or 0.35)
+                made = made + 1
+                if #sp.live >= (sp.max or 60) then killMarble(table.remove(sp.live, 1)) end
+                local f, sd = axes[1], axes[2]
+                local a = (math.random() - 0.5) * (sp.spread or 0)
+                local b2 = (math.random() - 0.5) * (sp.spread or 0)
+                local at = { pos[1] + f[1] * a + sd[1] * b2, pos[2] + f[2] * a + sd[2] * b2, pos[3] + f[3] * a + sd[3] * b2 }
+                local ang = (math.random() - 0.5) * (sp.angle or 60) * D
+                local dir = rotateVec(f, { 0, 0, 1 }, ang)
+                local sv = (sp.speed or 13000) * (0.35 + math.random() * 0.65)
+                local mat = nil
+                if sp.gems and #sp.gems > 0 then mat = sp.gems[math.random(#sp.gems)] end
+                local mb = spawnMarble(world, at, { mat = mat, mode = sp.mode or "roll", vel = { dir[1] * sv, dir[2] * sv, dir[3] * sv } })
+                if mb then sp.live[#sp.live + 1] = mb end
+            end
+            if refresh then
+                for i = #sp.live, 1, -1 do
+                    local m = sp.live[i]
+                    local l = valid(m.actor) and m.comp and safe(function() return m.comp:K2_GetComponentLocation() end)
+                    if not l or l.Z - ORIGIN.Z < kill then
+                        killMarble(m)
+                        table.remove(sp.live, i)
+                    else
+                        safe(function() m.actor.NotGroundedTime = 1e12 end)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function M.state()
     local L = {}
     if cur then
         local n = 0
         for _ in pairs(cur.cps) do n = n + 1 end
         local status = lastStatus
-        if status == "loading" then status = ("loading %d/%d"):format(#cur.spawned, #cur.spawned + #cur.queue) end
+        if status == "loading" then status = ("loading %d/%d"):format(#cur.spawned + #cur.marbles, #cur.spawned + #cur.queue + #cur.marbles + #cur.mqueue) end
         L[#L + 1] = "map_status=" .. status
         L[#L + 1] = "map_file=" .. cur.file
         L[#L + 1] = "map_name=" .. tostring(cur.name):gsub("[\r\n|]", " ")
@@ -674,6 +862,9 @@ function M.state()
         L[#L + 1] = "map_deaths=" .. cur.deaths
         L[#L + 1] = "map_cp=" .. n .. "/" .. cur.cpTotal
         if cur.failed then L[#L + 1] = "map_failed=" .. cur.failed end
+        local live = #cur.marbles
+        for _, sp in ipairs(cur.spawners) do live = live + #sp.live end
+        L[#L + 1] = "map_marbles=" .. live
         if cur.msg and os.clock() - (cur.msgAt or 0) < 4 then L[#L + 1] = "map_msg=" .. tostring(cur.msg):gsub("[\r\n]", " ") end
     else
         L[#L + 1] = "map_status=" .. (pending and "waiting" or lastStatus)
@@ -711,6 +902,7 @@ end
 
 function M.init(c)
     ctx = c
+    math.randomseed(os.time())
     local f = io.open(ctx.bridgeDir .. "/maps_log.txt", "w")
     if f then f:close() end
     os.remove(ctx.bridgeDir .. "/maps_log.txt")

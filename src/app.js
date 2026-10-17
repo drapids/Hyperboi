@@ -913,7 +913,7 @@ function renderMaps() {
           </div>
           ${m.description ? `<p class="text-xs text-mute mt-1 truncate">${esc(m.description)}</p>` : ''}
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-mute">
-            <span>${m.parts} parts, ${m.zones} zones, ${m.checkpoints} checkpoint${m.checkpoints === 1 ? '' : 's'}</span>
+            <span>${m.marbles} marble${m.marbles === 1 ? '' : 's'}${m.spawners ? `, ${m.spawners} spawner${m.spawners === 1 ? '' : 's'}` : ''}, ${m.parts} parts, ${m.checkpoints} checkpoint${m.checkpoints === 1 ? '' : 's'}</span>
             ${gemTimes ? `<span class="flex items-center gap-3">${gemTimes}</span>` : ''}
             ${best ? `<span class="flex items-center gap-1.5 text-chalk"><span class="gem" style="background:${GEM_COLOR[gem]}"></span>Best ${fmtSec(best)}</span>` : ''}
           </div>
@@ -977,6 +977,15 @@ function renderNowPlaying() {
 function wireMaps() {
   $('#mapsBuilder').addEventListener('click', () => window.hb.maps.builder());
   $('#mapsFolder').addEventListener('click', () => window.hb.maps.folder());
+  const showLog = async () => {
+    $('#mapsLogText').textContent = await safely(() => window.hb.maps.log());
+  };
+  $('#mapsLog').addEventListener('click', async () => {
+    const box = $('#mapsLogBox');
+    box.hidden = !box.hidden;
+    if (!box.hidden) await showLog();
+  });
+  $('#mapsLogCopy').addEventListener('click', () => navigator.clipboard.writeText($('#mapsLogText').textContent).then(() => toast('Copied')));
   $('#mapsRefresh').addEventListener('click', loadMaps);
   const afterAdd = (r) => {
     if (!r) return;

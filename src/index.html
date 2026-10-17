@@ -218,6 +218,15 @@
           <div class="mt-3 flex gap-2">
             <button id="mapsFolder" class="btn btn-line h-8 px-3 rounded-md text-xs">Open maps folder</button>
             <button id="mapsRefresh" class="btn btn-line h-8 px-3 rounded-md text-xs">Refresh</button>
+            <button id="mapsLog" class="btn btn-line h-8 px-3 rounded-md text-xs">What the mod says</button>
+          </div>
+          <div id="mapsLogBox" class="mt-3 rounded-xl bg-panel p-4" hidden>
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold text-sm">Mod log</h2>
+              <button id="mapsLogCopy" class="btn btn-line h-7 px-2.5 rounded-md text-xs">Copy</button>
+            </div>
+            <p class="text-xs text-mute mt-1">What the in-game mod wrote while loading maps and adding Custom maps to the menu. If something isn't working, this is the first place to look.</p>
+            <pre id="mapsLogText" class="mt-3 max-h-72 overflow-auto text-[11px] leading-relaxed text-mute whitespace-pre-wrap"></pre>
           </div>
         </div>
       </section>

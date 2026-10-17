@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { TransformControls } from '../vendor/TransformControls.js';
-import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams } from './pieces.js';
+import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams, GEMS, GEM, MARBLE_R, M, marblePoints, MODE_INFO, pickGem } from './pieces.js';
+import { makeSky, makeEnvironment, gemMaterial, MARBLE_GEO, woodMaterial, finishRings, playerFigure, arrowMesh, MOON_DIR } from './look.js';
 import { blankMap, newObject, uid, flatten, exportMap, importMap, validate, blankAnim, MOVE_DEFAULT, SPIN_DEFAULT, SWING_DEFAULT, BLINK_DEFAULT, DIFFICULTIES, GEM_NAMES, axisVector } from './mapfile.js';
 import { axesFromRot, toThree, fromThree, scaleToThree, scaleFromThree, quatFromRot, rotFromQuat, quatFromAxes, add } from './ue.js';
 import { evalAnim } from './anim.js';
@@ -33,8 +34,8 @@ const state = {
   selected: new Set(),
   tool: 'select',
   brush: null,
-  cat: 'shapes',
-  grid: 100,
+  cat: 'marbles',
+  grid: 1000,
   angle: 15,
   snap: true,
   placeZ: 0,
@@ -55,13 +56,17 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#eef1f8');
-scene.fog = new THREE.Fog('#eef1f8', 9000, 42000);
+const sky = makeSky();
+scene.add(sky);
+scene.environment = makeEnvironment(renderer);
+scene.fog = new THREE.Fog('#c9c2f2', 260000, 2200000);
 
-const camera = new THREE.PerspectiveCamera(50, 1, 10, 200000);
-camera.position.set(2600, 2200, 2800);
+const camera = new THREE.PerspectiveCamera(50, 1, 100, 1.2e7);
+camera.position.set(60000, 45000, 60000);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -69,44 +74,67 @@ controls.dampingFactor = 0.12;
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
 controls.screenSpacePanning = true;
 controls.maxPolarAngle = Math.PI * 0.495;
-controls.minDistance = 100;
-controls.maxDistance = 80000;
+controls.minDistance = 1500;
+controls.maxDistance = 1800000;
 controls.zoomToCursor = true;
 
-scene.add(new THREE.HemisphereLight('#ffffff', '#c9d3ee', 1.6));
-const sun = new THREE.DirectionalLight('#ffffff', 2.2);
-sun.position.set(3000, 6000, 2000);
+scene.add(new THREE.HemisphereLight('#e4defe', '#3a3466', 1.15));
+const sun = new THREE.DirectionalLight('#ffe6cc', 2.4);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.bias = -0.0004;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 40;
 const sc = sun.shadow.camera;
-sc.left = -5000;
-sc.right = 5000;
-sc.top = 5000;
-sc.bottom = -5000;
-sc.near = 100;
-sc.far = 20000;
+sc.near = 1000;
+sc.far = 900000;
 scene.add(sun, sun.target);
+const SUN_DIR = new THREE.Vector3(-MOON_DIR.x, 0.75, -MOON_DIR.z).normalize();
+let shadowSpan = 0;
+function fitShadow(dist) {
+  const span = Math.min(300000, Math.max(15000, dist * 0.9));
+  if (Math.abs(span - shadowSpan) / span < 0.15) return;
+  shadowSpan = span;
+  sc.left = -span;
+  sc.right = span;
+  sc.top = span;
+  sc.bottom = -span;
+  sc.updateProjectionMatrix();
+}
 
 const grid = new THREE.Group();
 scene.add(grid);
 function buildGrid() {
   grid.clear();
-  const size = 40000;
-  const minor = new THREE.GridHelper(size, size / state.grid, '#c9d3ee', '#c9d3ee');
+  const minorSize = state.grid * 160;
+  const minor = new THREE.GridHelper(minorSize, 160, '#fffbff', '#fffbff');
   minor.material.transparent = true;
-  minor.material.opacity = state.grid < 100 ? 0.35 : 0.55;
-  const major = new THREE.GridHelper(size, size / 1000, '#8ea0d6', '#8ea0d6');
+  minor.material.opacity = 0.09;
+  minor.material.depthWrite = false;
+  minor.userData.follow = state.grid;
+  const majorStep = state.grid * 10;
+  const major = new THREE.GridHelper(majorStep * 120, 120, '#ffffff', '#ffffff');
   major.material.transparent = true;
-  major.material.opacity = 0.6;
-  major.position.y = 0.5;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.ShadowMaterial({ opacity: 0.12 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  const axisX = new THREE.Mesh(new THREE.BoxGeometry(size, 1, 6), new THREE.MeshBasicMaterial({ color: '#e0786f', transparent: true, opacity: 0.5 }));
-  const axisY = new THREE.Mesh(new THREE.BoxGeometry(6, 1, size), new THREE.MeshBasicMaterial({ color: '#7cbf93', transparent: true, opacity: 0.5 }));
-  axisX.position.y = axisY.position.y = 1;
-  grid.add(ground, minor, major, axisX, axisY);
+  major.material.opacity = 0.16;
+  major.material.depthWrite = false;
+  major.userData.follow = majorStep;
+  const size = 2e6;
+  const axisX = new THREE.Mesh(new THREE.BoxGeometry(size, 1, 60), new THREE.MeshBasicMaterial({ color: '#ff8165', transparent: true, opacity: 0.45, depthWrite: false }));
+  const axisY = new THREE.Mesh(new THREE.BoxGeometry(60, 1, size), new THREE.MeshBasicMaterial({ color: '#7fe100', transparent: true, opacity: 0.45, depthWrite: false }));
+  grid.add(minor, major, axisX, axisY);
+}
+function followGrid(camDist) {
+  const pxPer = stage.clientHeight / (2 * Math.tan((camera.fov * Math.PI) / 360) * Math.max(1, camDist));
+  for (const g of grid.children) {
+    const f = g.userData.follow;
+    if (!f) continue;
+    const px = f * pxPer;
+    const base = g.userData.base ?? (g.userData.base = g.material.opacity);
+    const k = Math.min(1, Math.max(0, (px - 7) / 18));
+    g.material.opacity = base * k;
+    g.visible = k > 0.01;
+    g.position.x = Math.round(controls.target.x / f) * f;
+    g.position.z = Math.round(controls.target.z / f) * f;
+  }
 }
 
 const world = new THREE.Group();
@@ -125,7 +153,7 @@ const matCache = new Map();
 function solidMat(color, { ice = false, ghost = false, faded = false } = {}) {
   const key = `${color}|${ice}|${ghost}|${faded}`;
   if (matCache.has(key)) return matCache.get(key);
-  const m = new THREE.MeshStandardMaterial({ color, roughness: ice ? 0.15 : 0.62, metalness: ice ? 0.15 : 0, envMapIntensity: 0.6 });
+  const m = new THREE.MeshStandardMaterial({ color, roughness: ice ? 0.12 : 0.7, metalness: ice ? 0.2 : 0, envMapIntensity: 0.7 });
   if (ice) m.emissive = new THREE.Color('#bfefff').multiplyScalar(0.18);
   if (ghost || faded) {
     m.transparent = true;
@@ -146,7 +174,11 @@ function edgeMat(color) {
   edgeCache.set(color, m);
   return m;
 }
-const SEL_EDGE = new THREE.LineBasicMaterial({ color: '#13b5dd', transparent: true, opacity: 1, depthTest: false });
+const SEL_EDGE = new THREE.LineBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 1, depthTest: false });
+const SEL_RING = new THREE.MeshBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide });
+let thumbMode = false;
+const SEL_SHELL = new THREE.MeshBasicMaterial({ color: '#5fc8ff', side: THREE.BackSide, transparent: true, opacity: 0.85, depthWrite: false });
+const fixedScale = (piece) => ['marker', 'decor', 'marble', 'marbles', 'spawner'].includes(piece.kind);
 
 let hatchTex = null;
 function hatch() {
@@ -154,9 +186,9 @@ function hatch() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const x = c.getContext('2d');
-  x.fillStyle = '#e9eefb';
+  x.fillStyle = '#d9d4f6';
   x.fillRect(0, 0, 64, 64);
-  x.strokeStyle = '#1c3faa';
+  x.strokeStyle = '#6c63c9';
   x.lineWidth = 6;
   for (let i = -64; i < 128; i += 22) {
     x.beginPath();
@@ -213,9 +245,10 @@ function textTexture(text, color) {
   return { tex: t, aspect: w / 160 };
 }
 
-function partMesh(shape, color, opts, edges = true) {
+function partMesh(shape, color, opts, edges = true, mat = null, size = null) {
   const g = new THREE.Group();
-  const m = new THREE.Mesh(GEO[shape] || GEO.cube, solidMat(color, opts));
+  const material = mat === 'wood' && size ? woodMaterial(size[0] / 3000, size[1] / 3000, color, opts) : solidMat(color, opts);
+  const m = new THREE.Mesh(GEO[shape] || GEO.cube, material);
   m.castShadow = !opts.ghost && !opts.faded;
   m.receiveShadow = true;
   g.add(m);
@@ -241,18 +274,24 @@ function buildVisual(obj, ghost = false) {
   const opts = { ice: obj.look?.ice, ghost, faded };
   if (piece.kind === 'zone') {
     const color = ZONE_COLORS[piece.zone];
-    const box = new THREE.Mesh(GEO.cube, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: ghost ? 0.25 : 0.14, depthWrite: false }));
+    const box = new THREE.Mesh(GEO.cube, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: ghost ? 0.25 : piece.zone === 'kill' ? 0.05 : 0.12, depthWrite: false }));
     box.userData.zoneBox = true;
     const edges = new THREE.LineSegments(EDGE.cube, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
     edges.userData.edge = true;
     root.add(box, edges);
+    if (piece.rings) {
+      box.material.opacity = ghost ? 0.08 : 0.04;
+      const rings = finishRings(ghost);
+      rings.userData.ringsHolder = true;
+      root.add(rings);
+    }
     if (piece.pad) {
       const pad = partMesh(piece.zone === 'bounce' ? 'cylinder' : 'cube', color, { ghost });
       pad.userData.pad = true;
       root.add(pad);
     }
     if (piece.zone === 'boost' || piece.zone === 'wind') {
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(18, 46, 3), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(500, 1300, 3), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
       arrow.rotation.z = -Math.PI / 2;
       arrow.userData.arrow = true;
       root.add(arrow);
@@ -264,29 +303,111 @@ function buildVisual(obj, ghost = false) {
     }
   } else if (piece.kind === 'marker') {
     const color = obj.color || piece.color;
-    const ball = new THREE.Mesh(GEO.sphere, solidMat(color, { ghost }));
-    ball.scale.setScalar(0.7);
-    ball.position.y = 35;
-    ball.castShadow = true;
-    const arrow = new THREE.Mesh(GEO.cone, solidMat(color, { ghost }));
-    arrow.scale.set(0.35, 0.6, 0.35);
-    arrow.rotation.z = -Math.PI / 2;
-    arrow.position.set(75, 35, 0);
-    root.add(ball, arrow);
     if (piece.marker === 'spawn') {
-      const cap = new THREE.Mesh(new THREE.CapsuleGeometry(34, 112, 6, 16), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false }));
-      cap.position.y = 90;
-      root.add(cap);
+      const prm = { ...defaultParams(piece), ...obj.p };
+      const ball = new THREE.Mesh(MARBLE_GEO, gemMaterial(pickGem(prm.color, 0, obj.id), { ghost, simple: thumbMode }));
+      ball.position.y = MARBLE_R;
+      ball.castShadow = !ghost;
+      const who = playerFigure();
+      who.position.y = MARBLE_R * 2;
+      who.scale.setScalar(1.6);
+      const arr = arrowMesh(Math.max(2500, 1500 + prm.speed * 0.5), '#5fc8ff', 260);
+      arr.position.y = MARBLE_R;
+      arr.position.x = MARBLE_R * 1.05;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(40, 40, 12000, 8), new THREE.MeshBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 0.25, depthWrite: false }));
+      beam.position.y = MARBLE_R * 2 + 6000;
+      root.add(ball, who, arr, beam);
+      if (!ghost) {
+        const lbl = labelSprite('Start', '#2a7cff');
+        lbl.position.y = MARBLE_R * 2 + 900;
+        lbl.userData.label = true;
+        root.add(lbl);
+      }
+    } else {
+      const ball = new THREE.Mesh(GEO.sphere, solidMat(color, { ghost }));
+      ball.scale.setScalar(14);
+      ball.position.y = 700;
+      const arrow = arrowMesh(2400, color, 300);
+      arrow.position.y = 700;
+      root.add(ball, arrow);
+    }
+  } else if (piece.kind === 'marble' || piece.kind === 'marbles') {
+    const prm = { ...defaultParams(piece), ...obj.p };
+    const pts = marblePoints(obj);
+    for (const m of pts) {
+      const ball = new THREE.Mesh(MARBLE_GEO, gemMaterial(m.gem, { ghost, simple: thumbMode }));
+      ball.position.copy(toThree(m.pos));
+      ball.rotation.set(m.i * 1.7, m.i * 2.3, 0);
+      ball.castShadow = !ghost;
+      ball.receiveShadow = true;
+      ball.userData.marble = true;
+      const shell = new THREE.Mesh(MARBLE_GEO, SEL_SHELL);
+      shell.scale.setScalar(1.07);
+      shell.visible = false;
+      shell.userData.selShell = true;
+      ball.add(shell);
+      root.add(ball);
+      if (prm.mode === 'drift' && !thumbMode) {
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(MARBLE_R * 1.18, 30, 6, 48), new THREE.MeshBasicMaterial({ color: '#dddaff', transparent: true, opacity: 0.35, depthWrite: false }));
+        halo.position.copy(ball.position);
+        halo.rotation.x = Math.PI / 2;
+        root.add(halo);
+      }
+    }
+    if (piece.kind === 'marble' && prm.push > 0) {
+      const arr = arrowMesh(1500 + prm.push * 0.35, '#5fc8ff', 220);
+      arr.position.x = MARBLE_R * 1.05;
+      root.add(arr);
+    }
+    if (piece.kind === 'marbles' && pts.length > 1 && !thumbMode) {
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map((m) => toThree(m.pos))), new THREE.LineDashedMaterial({ color: '#dddaff', dashSize: 600, gapSize: 500, transparent: true, opacity: ghost ? 0.3 : 0.55 }));
+      line.computeLineDistances();
+      root.add(line);
+    }
+  } else if (piece.kind === 'spawner') {
+    const prm = { ...defaultParams(piece), ...obj.p };
+    const boxMat = new THREE.MeshStandardMaterial({ color: '#9dffca', transparent: true, opacity: ghost ? 0.25 : 0.35, roughness: 0.3, emissive: '#2a7c66', emissiveIntensity: 0.4, depthWrite: false });
+    const box = new THREE.Mesh(GEO.cube, boxMat);
+    box.scale.setScalar(20);
+    const edges = new THREE.LineSegments(EDGE.cube, new THREE.LineBasicMaterial({ color: '#9dffca' }));
+    edges.scale.setScalar(20);
+    edges.userData.edge = true;
+    root.add(box, edges);
+    const arr = arrowMesh(Math.max(3000, prm.speed * 0.45), '#9dffca', 320);
+    arr.position.x = 1000;
+    root.add(arr);
+    const half = (prm.angle * Math.PI) / 360;
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(Math.max(3000, prm.speed * 0.45), 32, -half, half * 2), new THREE.MeshBasicMaterial({ color: '#9dffca', transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+    fan.rotation.x = -Math.PI / 2;
+    root.add(fan);
+    if (prm.spread > 0) {
+      const sq = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(prm.spread, prm.spread)), new THREE.LineDashedMaterial({ color: '#9dffca', dashSize: 500, gapSize: 400, transparent: true, opacity: 0.7 }));
+      sq.rotation.x = -Math.PI / 2;
+      sq.computeLineDistances();
+      root.add(sq);
+    }
+    const sample = new THREE.Mesh(MARBLE_GEO, gemMaterial(pickGem(prm.color, 0, obj.id), { ghost: true, simple: thumbMode }));
+    sample.position.set(0, -MARBLE_R * 1.6, 0);
+    root.add(sample);
+    if (!ghost && !thumbMode) {
+      const lbl = labelSprite('Spawner', '#1e8a6c');
+      lbl.position.y = 1800;
+      lbl.userData.label = true;
+      root.add(lbl);
     }
   } else if (piece.kind === 'game') {
     const geo = piece.round ? GEO.cylinder : GEO.cube;
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: hatch(), roughness: 0.8, transparent: ghost || faded, opacity: ghost ? 0.5 : faded ? 0.3 : 1 }));
-    m.scale.copy(scaleToThree(piece.proxy.map((v) => v / 100)));
+    const size = piece.box.e.map((v) => (v * 2) / 100);
+    const mat = piece.wood ? woodMaterial(size[0] / 30, size[1] / 30, null, { ghost, faded }) : new THREE.MeshStandardMaterial({ map: hatch(), roughness: 0.8, transparent: ghost || faded, opacity: ghost ? 0.5 : faded ? 0.3 : 1 });
+    const m = new THREE.Mesh(geo, mat);
+    m.scale.copy(scaleToThree(size));
+    m.position.copy(toThree(piece.box.o));
     m.castShadow = !ghost;
     m.receiveShadow = true;
-    const e = new THREE.LineSegments(piece.round ? EDGE.cylinder : EDGE.cube, edgeMat('#1c3faa'));
+    const e = new THREE.LineSegments(piece.round ? EDGE.cylinder : EDGE.cube, edgeMat('#6c63c9'));
     e.userData.edge = true;
     e.scale.copy(m.scale);
+    e.position.copy(m.position);
     root.add(m, e);
   } else if (piece.kind === 'decor') {
     const prm = { ...defaultParams(piece), ...obj.p };
@@ -299,14 +420,16 @@ function buildVisual(obj, ghost = false) {
       root.add(hit);
     } else {
       const bulb = new THREE.Mesh(GEO.sphere, new THREE.MeshBasicMaterial({ color: obj.color }));
-      bulb.scale.setScalar(0.5);
-      const halo = new THREE.Mesh(GEO.sphere, new THREE.MeshBasicMaterial({ color: obj.color, transparent: true, opacity: 0.18, depthWrite: false }));
-      halo.scale.setScalar(Math.min(6, prm.radius / 400));
+      bulb.scale.setScalar(12);
+      const halo = new THREE.Mesh(GEO.sphere, new THREE.MeshBasicMaterial({ color: obj.color, transparent: true, opacity: 0.12, depthWrite: false }));
+      halo.scale.setScalar(Math.min(60, prm.radius / 1200));
       root.add(bulb, halo);
     }
   } else {
     for (const lp of localParts(obj)) {
-      const pm = partMesh(lp.shape, obj.color, opts);
+      const wood = lp.mat === 'wood' || obj.look?.wood;
+      const sz = wood ? [lp.scale[0] * 100 * Math.abs(obj.scale[0]), lp.scale[1] * 100 * Math.abs(obj.scale[1])] : null;
+      const pm = partMesh(lp.shape, obj.color, opts, !wood, wood ? 'wood' : null, sz);
       setLocal(pm, lp.pos, lp.rot, lp.scale);
       root.add(pm);
     }
@@ -318,7 +441,7 @@ function applyBase(obj, root) {
   const piece = PIECE[obj.piece];
   root.position.copy(toThree(obj.pos));
   root.quaternion.copy(quatFromRot(obj.rot));
-  if (piece.kind === 'marker' || piece.kind === 'decor') root.scale.set(1, 1, 1);
+  if (fixedScale(piece)) root.scale.set(1, 1, 1);
   else root.scale.copy(scaleToThree(obj.scale));
   fixZoneChildren(obj, root);
   root.visible = !state.hiddenIds.has(obj.id);
@@ -337,6 +460,10 @@ function fixZoneChildren(obj, root) {
       c.position.set(0, 50 + 60 / Math.max(0.01, Math.abs(s[2])), 0);
       c.scale.set((c.userData.aspect * 0.028) / Math.abs(s[0] || 1), 0.028 / Math.abs(s[2] || 1), 1);
     }
+    if (c.userData.ringsHolder) {
+      const k = Math.min(Math.abs(s[1]), Math.abs(s[2])) || 1;
+      c.scale.set(k / (Math.abs(s[0]) || 1), k / (Math.abs(s[2]) || 1), k / (Math.abs(s[1]) || 1));
+    }
     if (c.userData.arrow) {
       c.scale.set(1 / Math.abs(s[1] || 1), 1 / Math.abs(s[0] || 1), 1 / Math.abs(s[2] || 1));
       c.position.set(0, -50 + 30 / Math.max(0.01, Math.abs(s[2])), 0);
@@ -349,6 +476,9 @@ function rebuildObject(obj) {
   if (old) world.remove(old);
   const root = buildVisual(obj);
   applyBase(obj, root);
+  const sp = [];
+  root.traverse((c) => c.userData.spin && sp.push(c));
+  if (sp.length) root.userData.spinners = sp;
   world.add(root);
   roots.set(obj.id, root);
   if (state.selected.has(obj.id)) paintSelected(root, true);
@@ -363,6 +493,7 @@ function rebuildAll() {
 
 function paintSelected(root, on) {
   root.traverse((c) => {
+    if (c.userData.selShell) c.visible = on;
     if (c.userData.edge) {
       if (on) {
         if (!c.userData.baseMat) c.userData.baseMat = c.material;
@@ -398,7 +529,7 @@ gizmo.addEventListener('dragging-changed', (e) => {
       o.pos = fromThree(r.position).map(round2);
       o.rot = rotFromQuat(r.quaternion);
       const piece = PIECE[o.piece];
-      if (piece.kind !== 'marker' && piece.kind !== 'decor') o.scale = scaleFromThree(r.scale).map((v) => Math.round(v * 1000) / 1000);
+      if (!fixedScale(piece)) o.scale = scaleFromThree(r.scale).map((v) => Math.round(v * 1000) / 1000);
       applyBase(o, r);
     }
     dragStart = null;
@@ -417,7 +548,7 @@ gizmo.addEventListener('objectChange', () => {
     const nm = delta.clone().multiply(m);
     nm.decompose(r.position, r.quaternion, r.scale);
     const piece = PIECE[o.piece];
-    if (piece.kind === 'marker' || piece.kind === 'decor') r.scale.set(1, 1, 1);
+    if (fixedScale(piece)) r.scale.set(1, 1, 1);
     fixZoneChildren({ ...o, scale: scaleFromThree(r.scale) }, r);
   }
   drawMotionPath();
@@ -490,12 +621,12 @@ function drawMotionPath() {
   const base = o.pos;
   const v = pts.map((p) => toThree(add(base, p)));
   const g = new THREE.Group();
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v), new THREE.LineDashedMaterial({ color: '#1c3faa', dashSize: 40, gapSize: 30, depthTest: false, transparent: true }));
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v), new THREE.LineDashedMaterial({ color: '#5fc8ff', dashSize: 900, gapSize: 700, depthTest: false, transparent: true }));
   line.computeLineDistances();
   line.renderOrder = 6;
   g.add(line);
   v.forEach((p, i) => {
-    const d = new THREE.Mesh(new THREE.SphereGeometry(i ? 16 : 10, 16, 10), new THREE.MeshBasicMaterial({ color: i ? '#1c3faa' : '#ffffff', depthTest: false }));
+    const d = new THREE.Mesh(new THREE.SphereGeometry(i ? 420 : 280, 16, 10), new THREE.MeshBasicMaterial({ color: i ? '#5fc8ff' : '#ffffff', depthTest: false }));
     d.position.copy(p);
     d.renderOrder = 7;
     g.add(d);
@@ -587,6 +718,10 @@ function loadMap(map, { intro = false } = {}) {
   scheduleSave();
   if (intro) playIntro();
   else frameAll();
+  if (map.oldScale) {
+    delete map.oldScale;
+    setTimeout(() => toast('This map was made before marbles were real size, so everything in it is small next to them.'), 900);
+  }
 }
 
 const raycaster = new THREE.Raycaster();
@@ -603,9 +738,9 @@ function pickables(solidOnly) {
     if (!root.visible) continue;
     const piece = PIECE[obj(id)?.piece];
     if (!piece) continue;
-    if (solidOnly && (piece.kind === 'zone' || piece.kind === 'marker' || piece.kind === 'decor')) continue;
+    if (solidOnly && ['zone', 'marker', 'decor', 'marble', 'marbles', 'spawner'].includes(piece.kind)) continue;
     root.traverse((c) => {
-      if (c.isMesh && !c.userData.label) out.push(c);
+      if (c.isMesh && !c.userData.label && !c.userData.selShell) out.push(c);
     });
   }
   return out;
@@ -669,7 +804,7 @@ function updatePlaceHeight() {
 }
 
 function fmtLen(cm) {
-  return Math.abs(cm) >= 100 ? `${round2(cm / 100)} m` : `${Math.round(cm)} cm`;
+  return Math.abs(cm) >= 100000 ? `${round2(cm / 100000)} km` : `${round2(cm / 100)} m`;
 }
 
 const snapV = (v) => (state.snap ? Math.round(v / state.grid) * state.grid : Math.round(v));
@@ -719,7 +854,7 @@ function placeAt(p) {
   const r = rebuildObject(o);
   bounceIn(r);
   if (id === 'teleport') {
-    const ex = newObject('exit', [pos[0] + 800, pos[1], pos[2] - o.scale[2] * 50]);
+    const ex = newObject('exit', [pos[0] + 12000, pos[1], pos[2] - o.scale[2] * 50]);
     ex.p.link = o.id;
     o.p.exit = ex.id;
     state.map.objects.push(ex);
@@ -770,7 +905,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (!p) return;
     stopPreview(true);
     const o = placeAt(p);
-    painting = { keys: new Set([cellKey(p)]), placed: [o.id] };
+    painting = { keys: new Set([cellKey(p)]), placed: [o.id], lastP: p.clone() };
     canvas.setPointerCapture(e.pointerId);
     return;
   }
@@ -794,8 +929,11 @@ canvas.addEventListener('pointermove', (e) => {
       ghostSpring.x.target = p.x;
       ghostSpring.y.target = p.y;
       ghostSpring.z.target = p.z;
-      if (painting && !painting.keys.has(cellKey(p))) {
+      const pk = PIECE[state.brush];
+      const roomy = !['marble', 'marbles', 'spawner'].includes(pk.kind) || !painting || !painting.lastP || painting.lastP.distanceTo(p) >= (pk.kind === 'marble' ? MARBLE_R * 2.6 : 20000);
+      if (painting && roomy && !painting.keys.has(cellKey(p))) {
         painting.keys.add(cellKey(p));
+        painting.lastP = p.clone();
         const o = placeAt(p);
         painting.placed.push(o.id);
       }
@@ -899,14 +1037,14 @@ function frameObjects(list, dir) {
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length();
-  const dist = Math.max(600, size * 0.9) / Math.tan((camera.fov * Math.PI) / 360) / 1.6;
+  const dist = Math.max(12000, size * 0.9) / Math.tan((camera.fov * Math.PI) / 360) / 1.6;
   const d = dir || camera.position.clone().sub(controls.target).normalize();
   flyTo(c.clone().add(d.multiplyScalar(dist)), c);
 }
 
 function frameAll() {
   if (state.map.objects.length) frameObjects(state.map.objects);
-  else flyTo(new THREE.Vector3(2600, 2200, 2800), new THREE.Vector3(0, 0, 0));
+  else flyTo(new THREE.Vector3(60000, 45000, 60000), new THREE.Vector3(0, 0, 0));
 }
 
 function setView(v) {
@@ -915,7 +1053,7 @@ function setView(v) {
   if (v === 'frame') return frameAll();
   const dir = v === 'top' ? new THREE.Vector3(0.001, 1, 0.001).normalize() : v === 'side' ? new THREE.Vector3(0, 0.12, 1).normalize() : new THREE.Vector3(1, 0.85, 1.05).normalize();
   if (list.length) frameObjects(list, dir);
-  else flyTo(dir.multiplyScalar(4000), new THREE.Vector3());
+  else flyTo(dir.multiplyScalar(80000), new THREE.Vector3());
 }
 
 function resize() {
@@ -931,7 +1069,7 @@ function resolveAll() {
   const build = flatten({ ...state.map, objects: state.map.objects.filter((o) => o.anim) });
   const out = new Map();
   for (const z of build.zones) if (z.anim) out.set(z.id, z.anim);
-  for (const p of build.parts) {
+  for (const p of [...build.parts, ...build.marbles, ...build.spawners]) {
     const id = p.id.split(':')[0];
     if (p.anim && !out.has(id)) out.set(id, p.anim);
   }
@@ -968,10 +1106,12 @@ function togglePreview() {
   if (state.playing) stopPreview(false);
   else {
     resolvedAnims = resolveAll();
-    if (!resolvedAnims.size) {
-      toast('Nothing moves yet. Pick a piece and add motion in the inspector.');
+    const spawners = state.map.objects.some((o) => PIECE[o.piece].kind === 'spawner');
+    if (!resolvedAnims.size && !spawners) {
+      toast('Nothing moves yet. Add a marble spawner, or give something motion in the inspector.');
       return;
     }
+    clearSim();
     state.playing = true;
     gizmo.detach();
     $('#playIcon').innerHTML = ICON.pause;
@@ -982,6 +1122,7 @@ function stopPreview(reset) {
   const was = state.playing || state.time !== 0;
   state.playing = false;
   $('#playIcon').innerHTML = ICON.play;
+  if (reset) clearSim();
   if (reset && was) {
     setTime(0);
     for (const o of state.map.objects) {
@@ -990,6 +1131,86 @@ function stopPreview(reset) {
     }
     resolvedAnims = null;
     refreshPivot();
+  }
+}
+
+const sim = { list: [], timers: new Map(), group: new THREE.Group(), frame: 0, count: 0, solids: null };
+scene.add(sim.group);
+const GRAVITY = 980;
+const simRay = new THREE.Raycaster();
+const DOWN = new THREE.Vector3(0, -1, 0);
+const UP3 = new THREE.Vector3(0, 1, 0);
+
+function clearSim() {
+  for (const m of sim.list) sim.group.remove(m.mesh);
+  sim.list = [];
+  sim.timers.clear();
+  sim.solids = null;
+}
+
+function removeSim(m) {
+  sim.group.remove(m.mesh);
+  const i = sim.list.indexOf(m);
+  if (i >= 0) sim.list.splice(i, 1);
+}
+
+function stepSim(dt) {
+  sim.frame++;
+  if (!sim.solids || sim.frame % 45 === 0) sim.solids = pickables(true);
+  for (const o of state.map.objects) {
+    if (PIECE[o.piece].kind !== 'spawner') continue;
+    const prm = { ...defaultParams(PIECE.spawner), ...o.p };
+    if ((prm.channel || '').trim() && !state.fire) continue;
+    const r = roots.get(o.id);
+    if (!r || !r.visible) continue;
+    let t = (sim.timers.get(o.id) ?? 0) - dt;
+    let guard = 0;
+    while (t <= 0 && guard++ < 8) {
+      t += Math.max(0.1, prm.interval);
+      const mine = sim.list.filter((m) => m.owner === o.id);
+      if (mine.length >= prm.max) removeSim(mine[0]);
+      const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(r.quaternion);
+      const side = new THREE.Vector3(0, 0, 1).applyQuaternion(r.quaternion);
+      const pos = r.position.clone().addScaledVector(fwd, (Math.random() - 0.5) * prm.spread).addScaledVector(side, (Math.random() - 0.5) * prm.spread);
+      const dir = fwd.clone().applyAxisAngle(UP3, (Math.random() - 0.5) * prm.angle * (Math.PI / 180));
+      const vel = dir.multiplyScalar(prm.speed * (0.35 + Math.random() * 0.65));
+      const gem = pickGem(prm.color, ++sim.count, `${o.id}:${sim.frame}`);
+      const mesh = new THREE.Mesh(MARBLE_GEO, gemMaterial(gem));
+      mesh.castShadow = true;
+      mesh.position.copy(pos);
+      sim.group.add(mesh);
+      sim.list.push({ mesh, vel, owner: o.id, mode: prm.mode, age: 0, ground: false });
+    }
+    sim.timers.set(o.id, t);
+  }
+  const kill = state.map.rules.killHeight ?? -60000;
+  for (let i = sim.list.length - 1; i >= 0; i--) {
+    const m = sim.list[i];
+    m.age += dt;
+    if (m.mode === 'roll') m.vel.y -= GRAVITY * dt;
+    else if (m.mode === 'float') m.vel.multiplyScalar(Math.pow(0.25, dt));
+    m.mesh.position.addScaledVector(m.vel, dt);
+    m.mesh.rotation.z -= (m.vel.x * dt) / MARBLE_R;
+    m.mesh.rotation.x += (m.vel.z * dt) / MARBLE_R;
+    if (m.mode === 'roll' && (m.ground || (sim.frame + i) % 3 === 0)) {
+      simRay.set(m.mesh.position.clone().addScaledVector(UP3, MARBLE_R), DOWN);
+      simRay.far = MARBLE_R * 3.2;
+      const h = simRay.intersectObjects(sim.solids, false)[0];
+      m.ground = false;
+      if (h && h.face) {
+        const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+        if (n.y < 0) n.negate();
+        const gap = m.mesh.position.y - h.point.y;
+        if (gap < MARBLE_R) {
+          m.mesh.position.y = h.point.y + MARBLE_R;
+          const vn = m.vel.dot(n);
+          if (vn < 0) m.vel.addScaledVector(n, -vn * 1.2);
+          m.vel.multiplyScalar(Math.pow(0.92, dt));
+          m.ground = true;
+        } else if (gap < MARBLE_R * 1.6) m.ground = true;
+      }
+    }
+    if (toThree([0, 0, kill]).y > m.mesh.position.y || m.age > 90) removeSim(m);
   }
 }
 
@@ -1011,12 +1232,25 @@ function loop(now) {
   stepAppear(dt);
   if (state.playing) {
     let t = state.time + dt;
-    if (t > +$('#scrub').max) t = 0;
+    if (t > +$('#scrub').max) {
+      t = 0;
+      clearSim();
+    }
     setTime(t);
+    stepSim(dt);
   }
   const target = controls.target;
-  sun.position.set(target.x + 3000, target.y + 6000, target.z + 2000);
+  const camDist = camera.position.distanceTo(target);
+  fitShadow(camDist);
+  sun.position.copy(target).addScaledVector(SUN_DIR, 400000);
   sun.target.position.copy(target);
+  sky.position.copy(camera.position);
+  sky.material.uniforms.uTime.value = now / 1000;
+  followGrid(camDist);
+  for (const r of roots.values()) {
+    if (!r.userData.spinners) continue;
+    for (const c of r.userData.spinners) c.rotation.x += c.userData.spin * dt;
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
@@ -1099,8 +1333,8 @@ function renderPieces(anim) {
 function updateTrayNote(hover) {
   const p = hover || (state.brush && PIECE[state.brush]);
   const note = $('#trayNote');
-  if (p) note.textContent = p.kind === 'game' ? `${p.name}. A real piece from the game. The preview is a stand-in box, so check the size in game.` : `${p.name}. ${p.desc || ''}`;
-  else note.textContent = 'Pick a piece, then click in the scene to place it. Right-drag orbits, middle-drag pans, scroll zooms.';
+  if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}The real mesh spawns in game. The box here is its true size${p.approx ? ', roughly' : ''}.` : `${p.name}. ${p.desc || ''}`;
+  else note.textContent = 'Floors hurt in Hyperballin, marbles don\'t. Pick a piece, click to place it, drag to paint. Right-drag orbits, middle-drag pans.';
 }
 
 function makeThumbs() {
@@ -1108,9 +1342,11 @@ function makeThumbs() {
   tr.setSize(200, 150);
   tr.setPixelRatio(1);
   tr.outputColorSpace = THREE.SRGBColorSpace;
+  tr.toneMapping = THREE.ACESFilmicToneMapping;
   const ts = new THREE.Scene();
-  ts.add(new THREE.HemisphereLight('#ffffff', '#c9d3ee', 1.8));
-  const tl = new THREE.DirectionalLight('#ffffff', 2);
+  ts.environment = makeEnvironment(tr);
+  ts.add(new THREE.HemisphereLight('#f1edff', '#4a4380', 1.6));
+  const tl = new THREE.DirectionalLight('#ffe6cc', 2.2);
   tl.position.set(2, 4, 3);
   ts.add(tl);
   const tc = new THREE.PerspectiveCamera(35, 4 / 3, 1, 100000);
@@ -1119,8 +1355,12 @@ function makeThumbs() {
     const batch = queue.splice(0, 4);
     for (const id of batch) {
       const o = newObject(id, [0, 0, 0]);
-      if (PIECE[id].kind === 'zone') o.scale = o.scale.map((s) => s);
+      if (id === 'marble_line') Object.assign(o.p, { count: 4, color: 'cycle' });
+      if (id === 'marble_cloud') Object.assign(o.p, { count: 10, sizeX: 16000, sizeY: 12000, color: 'cycle' });
+      if (PIECE[id].kind === 'marbles' && o.p.color === 'random') o.p.color = 'cycle';
+      thumbMode = true;
       const v = buildVisual(o);
+      thumbMode = false;
       applyBase(o, v);
       v.position.set(0, 0, 0);
       v.traverse((c) => {
@@ -1340,8 +1580,8 @@ function renderMapPanel(ins) {
     if (i.fix) {
       const b = html(`<button class="btn line small">Place one</button>`);
       b.addEventListener('click', () => {
-        state.cat = 'play';
-        $$('#cats button').forEach((x) => x.classList.toggle('on', x.dataset.cat === 'play'));
+        state.cat = i.cat || 'play';
+        $$('#cats button').forEach((x) => x.classList.toggle('on', x.dataset.cat === state.cat));
         renderPieces(true);
         setBrush(i.fix);
       });
@@ -1359,7 +1599,7 @@ function renderMapPanel(ins) {
   ins.appendChild(sec('check', 'Checklist', iss));
   const b = flatten(m);
   const moving = m.objects.filter((o) => o.anim && (o.anim.move || o.anim.spin || o.anim.swing || o.anim.blink)).length;
-  ins.appendChild(sec('stats', 'Numbers', html(`<div class="stats"><div class="stat-box"><b>${m.objects.length}</b><span>Pieces</span></div><div class="stat-box"><b>${b.parts.length}</b><span>Game parts</span></div><div class="stat-box"><b>${moving}</b><span>Moving</span></div><div class="stat-box"><b>${b.zones.length}</b><span>Zones</span></div><div class="stat-box"><b>${b.checkpoints}</b><span>Checkpoints</span></div><div class="stat-box"><b>${new Set(m.objects.map((o) => o.group).filter(Boolean)).size}</b><span>Groups</span></div></div>`)));
+  ins.appendChild(sec('stats', 'Numbers', html(`<div class="stats"><div class="stat-box"><b>${b.marbles.length}</b><span>Marbles</span></div><div class="stat-box"><b>${b.spawners.length}</b><span>Spawners</span></div><div class="stat-box"><b>${b.parts.length}</b><span>Game parts</span></div><div class="stat-box"><b>${moving}</b><span>Moving</span></div><div class="stat-box"><b>${b.zones.length}</b><span>Zones</span></div><div class="stat-box"><b>${b.checkpoints}</b><span>Checkpoints</span></div></div>`)));
   const wrap = html('<div></div>');
   const search = html('<input class="field" placeholder="Filter pieces" style="margin-bottom:6px">');
   const list = html('<div class="outline"></div>');
@@ -1370,7 +1610,9 @@ function renderMapPanel(ins) {
     if (!items.length) list.appendChild(html(`<p class="hint">${m.objects.length ? 'No matches.' : 'Empty so far. Place something from the left.'}</p>`));
     for (const o of items.slice(0, 400)) {
       const hidden = state.hiddenIds.has(o.id);
-      const r = html(`<div class="out-row ${hidden ? 'hidden-obj' : ''}" role="button" tabindex="0"><span class="sw" style="background:${PIECE[o.piece].kind === 'zone' ? ZONE_COLORS[PIECE[o.piece].zone] : o.color}"></span><span class="nm">${esc(o.name || PIECE[o.piece].name)}</span><span class="gr">${esc(o.group)}</span><button class="eye" title="${hidden ? 'Show in editor' : 'Hide in editor'}">${hidden ? ICON.eyeOff : ICON.eye}</button></div>`);
+      const pk = PIECE[o.piece];
+      const swc = pk.kind === 'zone' ? ZONE_COLORS[pk.zone] : pk.params?.some((x) => x.type === 'gem') ? (GEM[o.p.color] || GEM.coral).surface : o.color;
+      const r = html(`<div class="out-row ${hidden ? 'hidden-obj' : ''}" role="button" tabindex="0"><span class="sw ${pk.params?.some((x) => x.type === 'gem') ? 'round' : ''}" style="background:${swc}"></span><span class="nm">${esc(o.name || PIECE[o.piece].name)}</span><span class="gr">${esc(o.group)}</span><button class="eye" title="${hidden ? 'Show in editor' : 'Hide in editor'}">${hidden ? ICON.eyeOff : ICON.eye}</button></div>`);
       r.addEventListener('click', (e) => {
         if (e.target.closest('.eye')) return;
         select([o.id], { toggle: e.shiftKey });
@@ -1410,23 +1652,32 @@ function renderSelPanel(ins, sel) {
 
   const tf = [];
   if (one) {
-    tf.push(vecRow('Position', one.pos, { step: state.snap ? state.grid / 4 : 1, unit: 'cm', onInput: (i, v) => {
-      one.pos[i] = v;
+    tf.push(vecRow('Position', one.pos.map((v) => v / M), { step: state.snap ? state.grid / 4 / M : 1, unit: 'm', decimals: 2, onInput: (i, v) => {
+      one.pos[i] = v * M;
       refreshVisuals(false);
     }, onCommit: () => commit('Move') }));
     tf.push(vecRow('Rotation', one.rot, { step: state.angle || 1, unit: '°', axes: ['P', 'Y', 'R'], onInput: (i, v) => {
       one.rot[i] = v;
       refreshVisuals(false);
     }, onCommit: () => commit('Rotate') }));
-    if (piece.kind === 'marker' || (piece.kind === 'decor')) {
+    if (fixedScale(piece)) {
+      if (piece.kind === 'marble' || piece.kind === 'marbles') tf.push(html(`<p class="hint">Marbles are always ${round2((MARBLE_R * 2) / M)} m across, same as in the game. Only the colour changes.</p>`));
     } else if (piece.kind === 'smart' || piece.kind === 'game') {
       tf.push(vecRow('Scale', one.scale, { step: 0.05, onInput: (i, v) => {
         one.scale[i] = v;
         refreshVisuals(false);
+        if (piece.kind === 'game' && typeof updateRealSizeRef === 'function') updateRealSizeRef();
       }, onCommit: () => commit('Scale') }));
+      if (piece.kind === 'game') {
+        const real = html('<p class="hint"></p>');
+        const updateRealSize = () => (real.textContent = `Real size in game: ${piece.box.e.map((e, i) => round2((e * 2 * Math.abs(one.scale[i])) / M)).join(' × ')} m${piece.approx ? ' (roughly)' : ''}.`);
+        updateRealSize();
+        tf.push(real);
+        var updateRealSizeRef = updateRealSize;
+      }
     } else {
-      tf.push(vecRow('Size', one.scale.map((s) => s * 100), { step: state.snap ? state.grid / 4 : 1, unit: 'cm', axes: ['L', 'W', 'H'], onInput: (i, v) => {
-        one.scale[i] = v / 100;
+      tf.push(vecRow('Size', one.scale.map((s) => (s * 100) / M), { step: state.snap ? state.grid / 4 / M : 1, unit: 'm', axes: ['L', 'W', 'H'], onInput: (i, v) => {
+        one.scale[i] = (v * M) / 100;
         refreshVisuals(false);
       }, onCommit: () => commit('Resize') }));
     }
@@ -1434,8 +1685,8 @@ function renderSelPanel(ins, sel) {
     const nudge = html('<div class="vec"></div>');
     ['X', 'Y', 'Z'].forEach((a, i) => {
       let last = 0;
-      nudge.appendChild(numInput({ value: 0, axis: a, step: state.grid, unit: 'cm', onInput: (v) => {
-        const d = v - last;
+      nudge.appendChild(numInput({ value: 0, axis: a, step: state.grid / M, unit: 'm', onInput: (v) => {
+        const d = (v - last) * M;
         last = v;
         forSel((o) => (o.pos[i] += d));
         refreshVisuals(false);
@@ -1454,7 +1705,28 @@ function renderSelPanel(ins, sel) {
         one.p[prm.key] = v;
         commit('Option');
       }));
-      else if (prm.type === 'text') {
+      else if (prm.type === 'gem') {
+        const gw = html(`<div class="gems-pick">${[['random', 'Random'], ['cycle', 'Rainbow'], ...GEMS.map((g) => [g.id, g.name])].map(([id, name]) => `<button class="gem-chip ${val === id ? 'on' : ''}" data-g="${id}" title="${esc(name)}${id === 'random' ? ', with the same odds the game uses' : ''}"><i class="gem-dot ${id}" style="${GEM[id] ? `--c:${GEM[id].surface};--d:${GEM[id].deep}` : ''}"></i><span>${esc(name)}</span></button>`).join('')}</div>`);
+        $$('.gem-chip', gw).forEach((b) =>
+          b.addEventListener('click', () => {
+            one.p[prm.key] = b.dataset.g;
+            $$('.gem-chip', gw).forEach((x) => x.classList.toggle('on', x === b));
+            rebuildObject(one);
+            commit('Colour');
+          })
+        );
+        opts.push(row(prm.label, gw));
+      } else if (prm.type === 'choice') {
+        const hint = html(`<p class="hint">${esc(prm.key === 'mode' ? MODE_INFO[val] || '' : '')}</p>`);
+        opts.push(row(prm.label, chipsEl(prm.options, val, (v) => {
+          one.p[prm.key] = v;
+          if (prm.key === 'mode') hint.textContent = MODE_INFO[v] || '';
+          rebuildObject(one);
+          commit('Option');
+          updateStats();
+        })));
+        if (prm.key === 'mode') opts.push(hint);
+      } else if (prm.type === 'text') {
         const f = html(`<input class="field" value="${esc(val)}">`);
         f.addEventListener('input', () => {
           one.p[prm.key] = f.value;
@@ -1468,8 +1740,8 @@ function renderSelPanel(ins, sel) {
         });
         opts.push(row(prm.label, f));
       } else
-        opts.push(sliderRow({ label: prm.label, value: val, min: prm.min, max: prm.max, step: prm.step, unit: /length|rise|width|thick|radius|run|height|spacing|diameter|gap|segment|climb|shift|step|reach/i.test(prm.key + prm.label) && !/steps|count|sides|segments|order/i.test(prm.key) ? 'cm' : '', onInput: (v) => {
-          one.p[prm.key] = v;
+        opts.push(sliderRow({ label: prm.label, value: val / (prm.div || 1), min: prm.min / (prm.div || 1), max: prm.max / (prm.div || 1), step: prm.step / (prm.div || 1), unit: prm.unit || '', onInput: (v) => {
+          one.p[prm.key] = v * (prm.div || 1);
           rebuildObject(one);
           refreshPivot();
         }, onCommit: () => {
@@ -1487,14 +1759,15 @@ function renderSelPanel(ins, sel) {
       b.addEventListener('click', () => obj(one.p.link) && select([one.p.link]));
       opts.push(b);
     }
-    ins.appendChild(sec('opts', piece.kind === 'smart' ? 'Shape' : 'Settings', opts));
+    if (prm0hint(piece)) opts.push(html(`<p class="hint">${esc(prm0hint(piece))}</p>`));
+    ins.appendChild(sec('opts', piece.kind === 'smart' ? 'Shape' : piece.kind === 'spawner' || piece.kind.startsWith('marble') ? 'Marbles' : 'Settings', opts));
   } else if (one && piece.marker === 'exit') {
     const b = html('<button class="btn line small">Select its teleporter</button>');
     b.addEventListener('click', () => obj(one.p.link) && select([one.p.link]));
     ins.appendChild(sec('opts', 'Settings', b));
   }
 
-  const showLook = sel.some((o) => ['solid', 'smart', 'game', 'decor', 'marker'].includes(PIECE[o.piece].kind));
+  const showLook = sel.some((o) => ['solid', 'smart', 'game', 'decor'].includes(PIECE[o.piece].kind) || o.piece === 'exit');
   if (showLook) {
     const look = [];
     const first = sel[0];
@@ -1511,6 +1784,13 @@ function renderSelPanel(ins, sel) {
       ci.addEventListener('input', () => setColor(ci.value, false));
       ci.addEventListener('change', () => setColor(ci.value, true));
       look.push(row('Colour', sw));
+    }
+    if (sel.some((o) => ['solid', 'smart'].includes(PIECE[o.piece].kind) && !PIECE[o.piece].mat)) {
+      look.push(checkRow('Wooden, like the game\'s tracks', !!first.look.wood, (v) => {
+        forSel((o) => (o.look.wood = v));
+        refreshVisuals(true);
+        commit('Wood');
+      }));
     }
     if (sel.some((o) => ['solid', 'smart', 'game'].includes(PIECE[o.piece].kind))) {
       look.push(checkRow('Ice (slippery)', first.look.ice, (v) => {
@@ -1591,7 +1871,7 @@ function motionPanel(sel) {
       v.points.forEach((pt, pi) => {
         const pr = html(`<div class="point-row"><span class="idx">${pi + 1}</span><div class="vec"></div><button title="Remove point">${ICON.x}</button></div>`);
         pt.forEach((c, ci) =>
-          $('.vec', pr).appendChild(numInput({ value: c, axis: 'XYZ'[ci], step: state.grid / 2, onInput: (x) => set((o) => o.anim.move && o.anim.move.points[pi] && (o.anim.move.points[pi][ci] = x)), onCommit: done }))
+          $('.vec', pr).appendChild(numInput({ value: c / M, axis: 'XYZ'[ci], step: state.grid / 2 / M, onInput: (x) => set((o) => o.anim.move && o.anim.move.points[pi] && (o.anim.move.points[pi][ci] = x * M)), onCommit: done }))
         );
         $('button', pr).addEventListener('click', () => {
           if (v.points.length <= 1) return;
@@ -1605,13 +1885,13 @@ function motionPanel(sel) {
         set((o) => {
           if (!o.anim.move) return;
           const lastPt = o.anim.move.points[o.anim.move.points.length - 1] || [0, 0, 0];
-          o.anim.move.points.push([lastPt[0] + 400, lastPt[1], lastPt[2]]);
+          o.anim.move.points.push([lastPt[0] + 10000, lastPt[1], lastPt[2]]);
         }, true);
         done();
       });
       card.appendChild(addPt);
-      card.appendChild(html('<p class="hint">Stops are offsets from where the piece sits, in cm.</p>'));
-      card.appendChild(sliderRow({ label: 'Trip time', value: v.duration, min: 0.2, max: 30, step: 0.1, unit: 's', onInput: (x) => set((o) => o.anim.move && (o.anim.move.duration = x)), onCommit: done }));
+      card.appendChild(html('<p class="hint">Stops are offsets from where the piece sits, in metres.</p>'));
+      card.appendChild(sliderRow({ label: 'Trip time', value: v.duration, min: 0.2, max: 120, step: 0.1, unit: 's', onInput: (x) => set((o) => o.anim.move && (o.anim.move.duration = x)), onCommit: done }));
       card.appendChild(row('Repeat', chipsEl([['pingpong', 'Back and forth'], ['loop', 'Loop'], ['once', 'Once']], v.mode, (x) => {
         set((o) => o.anim.move && (o.anim.move.mode = x));
         done();
@@ -1685,6 +1965,12 @@ function motionPanel(sel) {
     box.prepend(html('<p class="hint">Make it move, spin, swing or blink. Works on anything, zones too.</p>'));
   }
   return box;
+}
+
+function prm0hint(piece) {
+  if (piece.kind === 'spawner') return 'Works like the spawner in every stage: drops a marble every few moments and flings it forward. Give it motion to make it run ahead of you. Press play at the bottom to watch it.';
+  if (piece.marker === 'spawn') return 'Like the game, a fresh marble appears under you here every time you start or respawn, already moving.';
+  return '';
 }
 
 function action(a) {
@@ -1804,7 +2090,7 @@ function arrayModal() {
   const body = html(`<div style="display:grid;gap:12px">
     <p class="hint" style="margin-top:-6px">Each copy is shifted, turned and resized a bit more than the last one. Great for staircases, spirals and rows of obstacles.</p>
     <div class="form-row"><label>How many copies</label><input class="field" id="arCount" type="number" min="1" max="200" value="5"></div>
-    <div class="form-row"><label>Shift each copy (cm)</label><div class="vec"><input class="field" id="arX" value="${state.grid * 4}"><input class="field" id="arY" value="0"><input class="field" id="arZ" value="0"></div></div>
+    <div class="form-row"><label>Shift each copy (metres)</label><div class="vec"><input class="field" id="arX" value="${(state.grid * 4) / M}"><input class="field" id="arY" value="0"><input class="field" id="arZ" value="0"></div></div>
     <div class="form-row"><label>Turn each copy (degrees around up)</label><input class="field" id="arYaw" value="0"></div>
     <div class="form-row"><label>Resize each copy (1 keeps the size)</label><input class="field" id="arScale" value="1"></div>
   </div>`);
@@ -1815,7 +2101,7 @@ function arrayModal() {
     onMount: (m, close) => {
       $('#arGo', m).addEventListener('click', () => {
         const n = Math.min(200, Math.max(1, parseInt($('#arCount', m).value) || 1));
-        const off = ['#arX', '#arY', '#arZ'].map((s) => parseExpr($(s, m).value) || 0);
+        const off = ['#arX', '#arY', '#arZ'].map((s) => (parseExpr($(s, m).value) || 0) * M);
         const yaw = parseExpr($('#arYaw', m).value) || 0;
         const sc = parseExpr($('#arScale', m).value) || 1;
         const src = selectedObjs();
@@ -1831,7 +2117,7 @@ function arrayModal() {
             c.pos = [round2(c0[0] + rx + off[0] * i), round2(c0[1] + ry + off[1] * i), round2(c0[2] + rel[2] + off[2] * i)];
             c.rot[1] = round2(c.rot[1] + yaw * i);
             const f = Math.pow(sc, i);
-            if (PIECE[c.piece].kind !== 'marker') c.scale = c.scale.map((s) => round2(s * f * 1000) / 1000);
+            if (!fixedScale(PIECE[c.piece])) c.scale = c.scale.map((s) => round2(s * f * 1000) / 1000);
           }
           made.push(...copies);
         }
@@ -1863,7 +2149,7 @@ function settingsModal() {
   rules.appendChild(sliderRow({ label: 'Gravity', value: r.gravity, min: -1, max: 4, step: 0.05, onInput: (v) => (r.gravity = v), onCommit: () => {} }));
   rules.appendChild(sliderRow({ label: 'Run speed', value: r.speed, min: 0.25, max: 4, step: 0.05, onInput: (v) => (r.speed = v), onCommit: () => {} }));
   rules.appendChild(sliderRow({ label: 'Jump height', value: r.jump, min: 0.25, max: 5, step: 0.05, onInput: (v) => (r.jump = v), onCommit: () => {} }));
-  rules.appendChild(sliderRow({ label: 'Fall limit', value: r.killHeight, min: -50000, max: 0, step: 100, unit: 'cm', onInput: (v) => (r.killHeight = v), onCommit: () => {} }));
+  rules.appendChild(sliderRow({ label: 'Fall limit', value: r.killHeight / M, min: -3000, max: 0, step: 10, unit: 'm', onInput: (v) => (r.killHeight = v * M), onCommit: () => {} }));
   rules.appendChild(sliderRow({ label: 'Time limit', value: r.timeLimit, min: 0, max: 900, step: 5, unit: 's', onInput: (v) => (r.timeLimit = v), onCommit: () => {} }));
   rules.appendChild(checkRow('Must touch every checkpoint before the finish counts', r.needCheckpoints, (v) => (r.needCheckpoints = v)));
   let diff = m.meta.difficulty;
@@ -1956,6 +2242,7 @@ function helpModal() {
     ['Place the chosen piece', 'Click'],
     ['Paint a row', 'Click and drag'],
     ['Change placing height', 'Alt + scroll, [ ]'],
+    ['Watch spawners and motion', 'Space'],
     ['Stop placing', 'Esc'],
     ['Orbit', 'Right drag'],
     ['Pan', 'Middle drag'],
@@ -1973,7 +2260,6 @@ function helpModal() {
     ['Group', 'Ctrl + G'],
     ['Undo / redo', 'Ctrl + Z / Ctrl + Shift + Z'],
     ['Zoom to selection', 'F'],
-    ['Play motion preview', 'Space'],
     ['Export', 'Ctrl + S'],
     ['Select everything', 'Ctrl + A'],
     ['Snap on or off', 'Hold Ctrl while dragging']
@@ -2135,6 +2421,20 @@ function wire() {
   });
   $$('.viewbar [data-view]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
   $('#playBtn').addEventListener('click', togglePreview);
+  const ditherBtn = $('#ditherBtn');
+  const setDither = (on) => {
+    stage.classList.toggle('dither', on);
+    ditherBtn.classList.toggle('on', on);
+    try {
+      localStorage.setItem('builderballin:dither', on ? '1' : '0');
+    } catch {}
+  };
+  let ditherOn = true;
+  try {
+    ditherOn = localStorage.getItem('builderballin:dither') !== '0';
+  } catch {}
+  setDither(ditherOn);
+  ditherBtn.addEventListener('click', () => setDither(!stage.classList.contains('dither')));
   $('#scrub').addEventListener('input', () => {
     if (!resolvedAnims) resolvedAnims = resolveAll();
     gizmo.detach();
@@ -2199,7 +2499,7 @@ function playIntro() {
   if (box.isEmpty()) return frameAll();
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length();
-  const dist = Math.max(600, size * 0.9) / Math.tan((camera.fov * Math.PI) / 360) / 1.6;
+  const dist = Math.max(12000, size * 0.9) / Math.tan((camera.fov * Math.PI) / 360) / 1.6;
   camera.position.copy(c).add(new THREE.Vector3(-0.6, 1.4, 1.2).normalize().multiplyScalar(dist * 1.9));
   controls.target.copy(c);
   camFly.active = false;
@@ -2216,7 +2516,7 @@ function enterUI() {
 function boot() {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
-    if (p.grid) state.grid = p.grid;
+    if (p.grid && p.grid >= 500) state.grid = p.grid;
     if (p.angle !== undefined) state.angle = p.angle;
     if (p.snap !== undefined) state.snap = p.snap;
     if (p.cat) state.cat = p.cat;
@@ -2234,13 +2534,14 @@ function boot() {
     const saved = localStorage.getItem(STORE_KEY);
     if (saved) map = importMap(saved);
   } catch {}
-  if (!map) map = TEMPLATES[1].make();
+  if (map && map.objects.length && !map.objects.some((o) => ['marble', 'marbles', 'spawner'].includes(PIECE[o.piece].kind)) && map.oldScale) map = null;
+  if (!map) map = TEMPLATES[2].make();
   enterUI();
   loadMap(map, { intro: true });
   setTool('select');
   requestAnimationFrame(() => setTool('select'));
   requestAnimationFrame(loop);
-  window.__bb = { state, flatten, exportMap };
+  window.__bb = { state, flatten, exportMap, camera, controls, roots, scene, THREE, camFly, frameObjects, select, loadMap, TEMPLATES, setBrush };
 }
 
 boot();
