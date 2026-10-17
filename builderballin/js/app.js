@@ -1242,7 +1242,9 @@ function frameObjects(list, dir) {
 }
 
 function frameAll() {
-  if (state.map.objects.length) frameObjects(state.map.objects);
+  const list = state.map.objects.filter((o) => o.piece !== 'kill');
+  if (list.length) frameObjects(list);
+  else if (state.map.objects.length) frameObjects(state.map.objects);
   else flyTo(new THREE.Vector3(60000, 45000, 60000), new THREE.Vector3(0, 0, 0));
 }
 
@@ -2960,7 +2962,8 @@ function playIntro() {
     .map((x) => x.o);
   const step = Math.min(45, 1400 / Math.max(1, order.length));
   order.forEach((o, i) => bounceIn(roots.get(o.id), 250 + i * step, 500));
-  const box = boundsOf(list);
+  const view = list.filter((o) => o.piece !== 'kill');
+  const box = boundsOf(view.length ? view : list);
   if (box.isEmpty()) return frameAll();
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length();
@@ -3000,7 +3003,7 @@ function boot() {
     if (saved) map = importMap(saved);
   } catch {}
   if (map && map.objects.length && !map.objects.some((o) => ['marble', 'marbles', 'spawner'].includes(PIECE[o.piece].kind)) && map.oldScale) map = null;
-  if (!map) map = TEMPLATES[2].make();
+  if (!map) map = TEMPLATES[0].make();
   enterUI();
   loadMap(map, { intro: true });
   setTool('select');

@@ -25,6 +25,7 @@ Hyperballin is single player. Hyperboi only touches your own game on your own PC
 | Infinite meter | Stamina, energy and boost style bars stay full |
 | Infinite air jumps | Jump as many times as you want in the air |
 | No kill zones | Kill zones stop resetting you, so you can fall anywhere |
+| Freemode | Fly anywhere like creative mode. You float and bob while you hover and lean into it when you fly. Space up, Alt down, Shift for fast |
 | Ghost mode | Turns off collision so you fly through walls and floors |
 | Freeze in place | Holds you where you are, even mid-air |
 | Fever cam | Field of view swells in and out on its own |
@@ -36,7 +37,7 @@ There are also four presets: **Off**, **Practice**, **Untouchable** and **Fever*
 
 ### Physics
 
-Sliders for your speed, world speed (slow motion), jump height, gravity (it goes negative, so you can fall up), air control, size and field of view. There are buttons to launch straight up, boost forward and stop dead. Double-click any slider to reset it.
+Sliders for your speed, world speed (slow motion), jump height, gravity (it goes negative, so you can fall up), air control, size, Freemode fly speed and field of view. There are buttons to launch straight up, boost forward and stop dead. Double-click any slider to reset it.
 
 "Your speed" speeds up your character itself, so moves and abilities speed up with you instead of breaking.
 
@@ -70,7 +71,7 @@ The departure board up top always shows your speed, run timer, the level you're 
 ## Builderballin
 
 <p align="center">
-  <img src="docs/builderballin.gif" alt="Builderballin putting together the Downhill starter map" width="760">
+  <img src="docs/builderballin.gif" alt="Builderballin putting together a starter map" width="760">
 </p>
 
 **[Open Builderballin](https://drapids.github.io/Hyperboi/builderballin/)**
@@ -90,7 +91,7 @@ In Hyperballin you jump from marble to marble, and touching any floor hurts you.
 - **Marble spawner:** works like the spawner on every stage of the game. It drops a marble every 0.35 s by default and throws it forward with some spread. Give it motion and it runs ahead of you down the track, which is exactly how the game's first map works. Press play at the bottom to watch it throw marbles in the editor.
 - **Start:** like the game's respawn, a fresh marble appears under you, already moving, every time you start or fall.
 - **Wooden track:** straights, bends that bank and drop, half pipes and kickers, for rolling marbles to run on.
-- **Gameplay:** finish rings, checkpoints, kill zones, bounce and boost pads, speed, gravity, wind, slow motion, teleporters, triggers and messages.
+- **Gameplay:** the Dominus, checkpoints, kill zones, bounce and boost pads, speed, gravity, wind, slow motion, teleporters, triggers and messages.
 - **Game parts:** real pieces from the game, like the stage track, half tunnels, wall blocks, low ceilings, spinning plates, pillars and hook points. Each one shows its true size.
 - **Motion:** anything can move along a path, spin, swing or blink. It can start right away or wait for a trigger.
 - **Editing:**
@@ -99,9 +100,11 @@ In Hyperballin you jump from marble to marble, and touching any floor hurts you.
   - an array tool for rows and spirals of copies
   - mirroring and undo
 - **Looks like the game:** the lavender night sky with the moon, glassy patterned marbles, wooden tracks and the dither filter the game draws through. You can turn the dither off.
+- **Import anything:** PNGs (as a standing picture, a flat floor or terrain from a heightmap), Minecraft builds (`.schem`, `.schematic`, `.litematic`, structure `.nbt`), MagicaVoxel `.vox` and 3D models (`.glb`, `.gltf`, `.obj` with its `.mtl`, `.stl`, `.ply`, `.fbx`, `.3mf`). They get turned into coloured blocks, so they show up in the game exactly like they do in the editor. Use the Import button, the Import tab, or just drop the file on the map.
+- **Starter maps:** Marble run (easy), Corkscrew (medium) and Fever gap (hard).
 - **Files:** maps save as `.hbmap` files. Drag one onto the page to open it.
 
-<img src="docs/builderballin-inspector.png" alt="The Downhill map in Builderballin with its spawner throwing marbles down the track" width="880">
+<img src="docs/builderballin-inspector.png" alt="A map in Builderballin with its spawner throwing marbles down the track" width="880">
 
 ### Playing your maps
 
@@ -110,6 +113,8 @@ In Hyperballin you jump from marble to marble, and touching any floor hurts you.
 1. Press **Export map** in Builderballin to download the `.hbmap` file.
 2. In Hyperboi, open **Maps** and drop the file in.
 3. Load into any level in the game and press **Play**. The map is built 22 km up in the sky, out of the way of the real stages, and you're dropped onto a marble at its Start.
+
+Touch the Dominus and you go on to the next map in your list. After the last one you go into the game's next level, the same way the Dominus works in the real stages.
 
 The Maps page shows your run time, checkpoints and resets live. Each map remembers your best time and the gem you earned. Leave the map and you're put back where you were.
 

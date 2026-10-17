@@ -400,6 +400,14 @@ local function readIndex()
 end
 M.readIndex = readIndex
 
+local function nextMap(file)
+    local list = readIndex()
+    for i, m in ipairs(list) do
+        if m.file == file then return list[i + 1] end
+    end
+    return nil
+end
+
 local function now(world)
     local gs = valid(GS) and GS or StaticFindObject("/Script/Engine.Default__GameplayStatics")
     local t = gs and safe(function() return gs:GetTimeSeconds(world) end)
@@ -801,6 +809,11 @@ function M.tick()
     if not valid(ch) then return end
     local world = cur.worldObj
     if #cur.queue > 0 or #cur.mqueue > 0 then
+        if cur.hold then
+            safe(function() ch:K2_SetActorLocation(cur.hold, false, {}, true) end)
+            local cm = ctx.getCmc()
+            if valid(cm) then safe(function() cm.Velocity = { X = 0, Y = 0, Z = 0 } end) end
+        end
         if now(world) - cur.t0 < 1.5 then return end
         spawnBatch(world)
         return
@@ -832,11 +845,29 @@ function M.tick()
             cur.armed = false
         end
     end
-    if cur.finished and cur.finishAt and now(world) - cur.finishAt > 4 then
+    if cur.finished and cur.finishAt and now(world) - cur.finishAt > 3 then
         cur.finishAt = nil
         if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
         cur.finishText = nil
-        M.restart()
+        local nxt = nextMap(cur.file)
+        if nxt then
+            local back = cur.returnTo
+            local here = safe(function() return ch:K2_GetActorLocation() end)
+            log("on to the next map: " .. tostring(nxt.name ~= "" and nxt.name or nxt.file))
+            cur.returnTo = nil
+            M.load(nxt.file)
+            if cur then
+                cur.returnTo = back
+                cur.hold = here and { X = here.X, Y = here.Y, Z = here.Z } or nil
+                cur.msg = "Next up: " .. tostring(nxt.name ~= "" and nxt.name or nxt.file)
+                cur.msgAt = os.clock()
+            end
+            return
+        end
+        log("that was the last custom map, on to the next level")
+        M.unload(true)
+        local c2 = ctx.getChar()
+        if valid(c2) then safe(function() c2:NextLevel() end) end
         return
     end
     if cur.runStart and not cur.finished then cur.runTime = now(world) - cur.runStart end
