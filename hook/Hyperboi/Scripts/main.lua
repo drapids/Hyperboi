@@ -539,7 +539,7 @@ end
 local function writeState(o, status)
     local L = {}
     table.insert(L, "status=" .. status)
-    table.insert(L, "ver=5")
+    table.insert(L, "ver=6")
     table.insert(L, "tick=" .. tick)
     table.insert(L, "clock=" .. string.format("%.2f", os.clock()))
     if o.char then
@@ -590,7 +590,7 @@ local function step()
         parseCmd(raw)
     end
 
-    local c = cached("char", 20, function()
+    local c = cached("char", 1, function()
         local pc = FindFirstOf("PlayerController")
         local pawn = valid(pc) and safe(function() return pc.Pawn end) or nil
         if valid(pawn) then return pawn end
@@ -599,6 +599,7 @@ local function step()
     if valid(c) then
         local full = safe(function() return c:GetFullName() end) or "?"
         if full ~= CharName then
+            cache = { char = cache.char }
             Char = c
             CharName = full
             touched = {}
@@ -651,15 +652,20 @@ local ctx = {
     bridgeDir = bridgeDir,
     modDir = modDir,
     maps = maps,
-    getChar = function() return valid(Char) and Char or nil end,
+    getChar = function()
+        local c = safe(function() return FindFirstOf("BP_ThirdPersonCharacter_C") end)
+        return valid(c) and c or nil
+    end,
     getCmc = function()
-        if not valid(Char) then return nil end
-        local c = safe(function() return Char.CharacterMovement end)
+        local ch = safe(function() return FindFirstOf("BP_ThirdPersonCharacter_C") end)
+        if not valid(ch) then return nil end
+        local c = safe(function() return ch.CharacterMovement end)
         return valid(c) and c or nil
     end,
     worldName = function()
-        if not valid(Char) then return "" end
-        local w = safe(function() return Char:GetWorld() end)
+        local ch = safe(function() return FindFirstOf("BP_ThirdPersonCharacter_C") end)
+        if not valid(ch) then return "" end
+        local w = safe(function() return ch:GetWorld() end)
         return w and fname(w) or ""
     end,
     setKillboxes = function(on) mapKill = on end,

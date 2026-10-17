@@ -5,7 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
-const MOD_VERSION = '5';
+const MOD_VERSION = '6';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;

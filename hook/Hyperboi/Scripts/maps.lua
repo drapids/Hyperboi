@@ -347,8 +347,30 @@ local function spawnMarble(world, pos, opts)
     return m
 end
 
+local liveCache = {}
+local function liveSet(clsName)
+    local set = liveCache[clsName]
+    if set then return set end
+    set = {}
+    local all = safe(function() return FindAllOf(clsName) end)
+    if all then
+        for _, o in ipairs(all) do
+            local a = safe(function() return o:GetAddress() end)
+            if a then set[a] = true end
+        end
+    end
+    liveCache[clsName] = set
+    return set
+end
+
+local function alive(rec, clsName)
+    if not rec or not rec.addr then return false end
+    if not liveSet(clsName or rec.cls or "BP_Marble1_C")[rec.addr] then return false end
+    return valid(rec.actor)
+end
+
 local function enforce(m)
-    if not m or not m.comp or not valid(m.actor) then return end
+    if not m or not m.comp or not alive(m) then return end
     local c = m.comp
     if safe(function() return c:IsSimulatingPhysics(FName("None")) end) == false then
         safe(function() c:SetSimulatePhysics(true) end)
@@ -362,7 +384,7 @@ local function enforce(m)
 end
 
 local function killMarble(m)
-    if m and valid(m.actor) then safe(function() m.actor:K2_DestroyActor() end) end
+    if m and alive(m) then safe(function() m.actor:K2_DestroyActor() end) end
 end
 
 local function readIndex()
@@ -436,8 +458,14 @@ end
 
 function M.unload(silent)
     if not cur then return end
+    liveCache = {}
+    if cur.world ~= ctx.worldName() then
+        cur = nil
+        lastStatus = "none"
+        return
+    end
     for _, sp in ipairs(cur.spawned) do
-        if valid(sp.actor) then safe(function() sp.actor:K2_DestroyActor() end) end
+        if alive(sp) then safe(function() sp.actor:K2_DestroyActor() end) end
     end
     for _, m in ipairs(cur.marbles) do killMarble(m) end
     for _, sp in ipairs(cur.spawners) do for _, m in ipairs(sp.live) do killMarble(m) end end
@@ -735,7 +763,7 @@ local function spawnBatch(world)
         local part = table.remove(cur.queue, 1)
         local actor = spawnPart(world, part)
         if actor then
-            local sp = { actor = actor, part = part, axes = axesFromRot(part.rot or { 0, 0, 0 }) }
+            local sp = { actor = actor, part = part, axes = axesFromRot(part.rot or { 0, 0, 0 }), addr = addr(actor), cls = safe(function() return actor:GetClass():GetFName():ToString() end) }
             cur.spawned[#cur.spawned + 1] = sp
             if part.anim then cur.animated[#cur.animated + 1] = sp end
         else
@@ -756,6 +784,7 @@ local function spawnBatch(world)
 end
 
 function M.tick()
+    liveCache = {}
     local ch = ctx.getChar()
     if pending and valid(ch) then
         local f = pending
@@ -782,7 +811,7 @@ function M.tick()
         local a = sp.part.anim
         local at = animTime(a, t)
         local pos, axes, vis = evalAnim(a, at, sp.part.pos, sp.axes)
-        if valid(sp.actor) then
+        if alive(sp) then
             safe(function() sp.actor:K2_SetActorLocationAndRotation(W(pos), rotFromAxes(axes), false, {}, true) end)
             if a.blink and vis ~= sp.vis then
                 sp.vis = vis
@@ -863,7 +892,7 @@ function M.tickMarbles(ch, t)
     local refresh = cur.frame % 20 == 0
     local check = cur.frame % 3 == 0
     for _, m in ipairs(cur.marbles) do
-        if valid(m.actor) and m.comp then
+        if alive(m) and m.comp then
             if m.anim then
                 local pos = evalAnim(m.anim, animTime(m.anim, t), m.home, m.axes)
                 safe(function() m.comp:K2_SetWorldLocation(W(pos), false, {}, true) end)
@@ -885,7 +914,7 @@ function M.tickMarbles(ch, t)
             end
         end
     end
-    if cur.startMarble and refresh and valid(cur.startMarble.actor) then
+    if cur.startMarble and refresh and alive(cur.startMarble) then
         safe(function() cur.startMarble.actor.NotGroundedTime = 1e12 end)
         enforce(cur.startMarble)
     end
@@ -920,7 +949,7 @@ function M.tickMarbles(ch, t)
             if refresh then
                 for i = #sp.live, 1, -1 do
                     local m = sp.live[i]
-                    local l = valid(m.actor) and m.comp and safe(function() return m.comp:K2_GetComponentLocation() end)
+                    local l = alive(m) and m.comp and safe(function() return m.comp:K2_GetComponentLocation() end)
                     if not l or l.Z - ORIGIN.Z < kill then
                         killMarble(m)
                         table.remove(sp.live, i)

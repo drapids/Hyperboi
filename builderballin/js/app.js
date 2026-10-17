@@ -6,6 +6,7 @@ import { makeSky, makeEnvironment, gemMaterial, MARBLE_GEO, woodMaterial, finish
 import { blankMap, newObject, uid, flatten, exportMap, importMap, validate, blankAnim, MOVE_DEFAULT, SPIN_DEFAULT, SWING_DEFAULT, BLINK_DEFAULT, DIFFICULTIES, GEM_NAMES, axisVector } from './mapfile.js';
 import { axesFromRot, toThree, fromThree, scaleToThree, scaleFromThree, quatFromRot, rotFromQuat, quatFromAxes, add } from './ue.js';
 import { evalAnim } from './anim.js';
+import { MESHES } from './meshes.js';
 import { animate, fadeIn, SPRINGS, Spring, springCurve } from './spring.js';
 import { TEMPLATES } from './templates.js';
 
@@ -177,6 +178,77 @@ function edgeMat(color) {
 const SEL_EDGE = new THREE.LineBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 1, depthTest: false });
 const SEL_RING = new THREE.MeshBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide });
 let thumbMode = false;
+const MODELS = {
+  g_tracks: [{ mk: 'tracks1_3a1', wood: true }],
+  g_track_round: [{ mk: 'greentrackrounded', color: '#5f9a3a' }],
+  g_large_green: [{ mk: 'largegreenexpg', color: '#6aa84f' }],
+  g_halftunnel: [{ mk: 'halftunnel3', color: '#aaa69e' }],
+  g_halftunnel_m: [{ mk: 'halftunnel3mirror', color: '#aaa69e' }],
+  g_window_tunnel: [{ mk: 'windowhalftunnel2b1', color: '#aaa69e' }],
+  g_block: [{ mk: 'Block1a1', color: '#b9a58a' }],
+  g_lowceiling: [{ mk: 'SM_staple3', color: '#e8e2d0' }],
+  g_bowl: [{ mk: 'scene', color: '#f1efe8' }],
+  g_spinplate: [{ mk: 'Decorative_plate', s: 3.4, color: '#d9d2c3' }, { mk: 'Rounded_square_steel_tube_PL', color: '#8d939b' }],
+  g_plate: [{ mk: 'Decorative_plate', color: '#d9d2c3' }],
+  g_tube: [{ mk: 'Rounded_square_steel_tube_PL', color: '#8d939b' }],
+  g_pillar: [{ mk: 'p1a2eg2', color: '#efeae2' }],
+  g_hookpoint: [{ mk: 'hookpointexp', s: 8, color: '#c9b27a' }],
+  g_pipe: [{ mk: 'SM_pipe1b2', color: '#8f96a0' }],
+  g_torus: [{ mk: 'SM_Torus', color: '#5fc8ff' }],
+  g_marker: [{ mk: 'marker', color: '#ff8165' }]
+};
+const meshGeo = new Map();
+function gameGeometry(mk) {
+  if (meshGeo.has(mk)) return meshGeo.get(mk);
+  const m = MESHES[mk];
+  if (!m) return null;
+  const bin = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+  const q = new Uint16Array(bin(m.p));
+  const ix = new Uint16Array(bin(m.i));
+  const n = q.length / 3;
+  const pos = new Float32Array(n * 3);
+  const uv = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const x = m.b[0] + (q[i * 3] / 65535) * (m.b[3] - m.b[0]);
+    const y = m.b[1] + (q[i * 3 + 1] / 65535) * (m.b[4] - m.b[1]);
+    const z = m.b[2] + (q[i * 3 + 2] / 65535) * (m.b[5] - m.b[2]);
+    pos[i * 3] = x;
+    pos[i * 3 + 1] = z;
+    pos[i * 3 + 2] = y;
+    uv[i * 2] = x / 3000;
+    uv[i * 2 + 1] = y / 3000;
+  }
+  const idx = new Uint16Array(ix.length);
+  for (let t = 0; t < ix.length; t += 3) {
+    idx[t] = ix[t];
+    idx[t + 1] = ix[t + 2];
+    idx[t + 2] = ix[t + 1];
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  const e = new THREE.EdgesGeometry(g, 40);
+  const out = { g, e };
+  meshGeo.set(mk, out);
+  return out;
+}
+const gameMats = new Map();
+function gameMat(color, ghost, faded) {
+  const key = `${color}|${ghost}|${faded}`;
+  if (gameMats.has(key)) return gameMats.get(key);
+  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.7 });
+  if (ghost || faded) {
+    m.transparent = true;
+    m.opacity = ghost ? 0.5 : 0.3;
+    m.depthWrite = !ghost;
+  }
+  gameMats.set(key, m);
+  return m;
+}
 const SEL_SHELL = new THREE.MeshBasicMaterial({ color: '#5fc8ff', side: THREE.BackSide, transparent: true, opacity: 0.85, depthWrite: false });
 const fixedScale = (piece) => ['marker', 'decor', 'marble', 'marbles', 'spawner', 'dominus'].includes(piece.kind);
 
@@ -413,6 +485,23 @@ function buildVisual(obj, ghost = false) {
       lbl.position.y = 1800;
       lbl.userData.label = true;
       root.add(lbl);
+    }
+  } else if (piece.kind === 'game' && MODELS[piece.id] && MODELS[piece.id].every((p) => MESHES[p.mk])) {
+    for (const part of MODELS[piece.id]) {
+      const gg = gameGeometry(part.mk);
+      const mat = part.wood ? woodMaterial(1, 1, null, { ghost, faded }) : gameMat(part.color, ghost, faded);
+      if (part.wood) mat.side = THREE.DoubleSide;
+      const m = new THREE.Mesh(gg.g, mat);
+      m.scale.setScalar(part.s || 1);
+      m.castShadow = !ghost;
+      m.receiveShadow = true;
+      root.add(m);
+      if (!thumbMode) {
+        const e = new THREE.LineSegments(gg.e, edgeMat(part.color || '#a8703f'));
+        e.userData.edge = true;
+        e.scale.setScalar(part.s || 1);
+        root.add(e);
+      }
     }
   } else if (piece.kind === 'game') {
     const geo = piece.round ? GEO.cylinder : GEO.cube;
@@ -1355,7 +1444,7 @@ function renderPieces(anim) {
 function updateTrayNote(hover) {
   const p = hover || (state.brush && PIECE[state.brush]);
   const note = $('#trayNote');
-  if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}The real mesh spawns in game. The box here is its true size${p.approx ? ', roughly' : ''}.` : `${p.name}. ${p.desc || ''}`;
+  if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}${MODELS[p.id] ? 'Shape and size come straight from the game files.' : `The real one spawns in game. The box here is its size${p.approx ? ', roughly' : ''}.`}` : `${p.name}. ${p.desc || ''}`;
   else note.textContent = 'Floors hurt in Hyperballin, marbles don\'t. Pick a piece, click to place it, drag to paint. Right-drag orbits, middle-drag pans.';
 }
 
