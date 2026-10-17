@@ -671,7 +671,7 @@ function renderSetup() {
   });
   $('#installBtn').textContent = info.ue4ss && info.modInstalled ? 'Reinstall hook' : 'Install hook';
   $('#toggleHookBtn').textContent = info.hookDisabled ? 'Turn hook on' : 'Turn hook off';
-  $('#launchBtn').textContent = info.gameRunning ? 'Game is running' : 'Launch game';
+  $('#launchBtn').textContent = info.gameRunning ? 'Restart game' : 'Launch game';
   $('#playText').textContent = ok[2] ? `Connected to ${live && live.level ? live.level : 'the game'}. You're set.` : 'Launch Hyperballin and load into a level. The board up top says LINKED when it works.';
 }
 

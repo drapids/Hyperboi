@@ -5,7 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
-const MOD_VERSION = '6';
+const MOD_VERSION = '7';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;
@@ -592,8 +592,27 @@ ipcMain.handle('refreshMod', () => {
   return info();
 });
 ipcMain.handle('hookEnabled', (_e, on) => setHookEnabled(on));
-ipcMain.handle('launch', () => {
+function runQuiet(cmd, args, ms) {
+  return new Promise((resolve) => execFile(cmd, args, { windowsHide: true, timeout: ms }, (err, out) => resolve(err ? '' : out || '')));
+}
+
+async function killStuckGame() {
+  if (process.platform !== 'win32') return;
+  await runQuiet('taskkill.exe', ['/F', '/T', '/IM', EXE], 8000);
+  await runQuiet('taskkill.exe', ['/F', '/T', '/IM', LAUNCHER], 5000);
+  await runQuiet('taskkill.exe', ['/F', '/IM', 'CrashReportClient.exe'], 5000);
+  for (let i = 0; i < 20; i++) {
+    const out = await runQuiet('tasklist.exe', ['/FI', `IMAGENAME eq ${EXE}`, '/NH', '/FO', 'CSV'], 5000);
+    if (!out.toLowerCase().includes(EXE.toLowerCase())) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  gameRunning = false;
+  pushInfo();
+}
+
+ipcMain.handle('launch', async () => {
   if (!store.gameDir) throw new Error('no game folder yet');
+  if (gameRunning) await killStuckGame();
   const root = path.resolve(store.gameDir, '..', '..', '..');
   const launcher = path.join(root, LAUNCHER);
   const exe = exists(launcher) ? launcher : path.join(store.gameDir, EXE);

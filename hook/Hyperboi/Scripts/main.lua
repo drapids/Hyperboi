@@ -8,9 +8,6 @@ package.path = modDir .. "/Scripts/?.lua;" .. package.path
 local maps = require("maps")
 local menu = require("menu")
 local mapKill = false
-local frameTicks = 0
-local seenFrameTicks = -1
-local frameHooked = false
 
 local cfg = {
     god = false, nocd = false, infmeter = false, airjumps = false, nokill = false, ghost = false,
@@ -539,7 +536,7 @@ end
 local function writeState(o, status)
     local L = {}
     table.insert(L, "status=" .. status)
-    table.insert(L, "ver=6")
+    table.insert(L, "ver=7")
     table.insert(L, "tick=" .. tick)
     table.insert(L, "clock=" .. string.format("%.2f", os.clock()))
     if o.char then
@@ -630,18 +627,6 @@ local function step()
     applyKillboxes()
     menu.tick()
     if tick % 20 == 0 then menu.scan() end
-    if o.char and not frameHooked and tick % 40 == 0 then
-        frameHooked = pcall(function()
-            RegisterHook("/Game/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C:ReceiveTick", function()
-                frameTicks = frameTicks + 1
-                local ok, err = pcall(maps.tick)
-                if not ok then
-                    local f = io.open(bridgeDir .. "/error.txt", "w")
-                    if f then f:write("maps: " .. tostring(err)) f:close() end
-                end
-            end)
-        end)
-    end
 
     if tick % 5 == 0 then
         writeState(o, o.char and "playing" or "menu")
@@ -673,30 +658,48 @@ local ctx = {
 maps.init(ctx)
 menu.init(ctx)
 
-LoopAsync(16, function()
-    if frameTicks ~= seenFrameTicks then
-        seenFrameTicks = frameTicks
-        if frameHooked then return false end
+local function report(prefix, err)
+    local f = io.open(bridgeDir .. "/error.txt", "w")
+    if f then f:write(prefix .. tostring(err)) f:close() end
+end
+
+local lastStep = -1
+local busy = false
+local function frame()
+    if busy then return end
+    busy = true
+    local ok, err = pcall(maps.tick)
+    if not ok then report("maps: ", err) end
+    local now = os.clock()
+    if now - lastStep >= 0.045 or now < lastStep then
+        lastStep = now
+        ok, err = pcall(step)
+        if not ok then report("", err) end
     end
-    ExecuteInGameThread(function()
-        local ok, err = pcall(maps.tick)
-        if not ok then
-            local f = io.open(bridgeDir .. "/error.txt", "w")
-            if f then f:write("maps: " .. tostring(err)) f:close() end
-        end
-    end)
-    return false
-end)
+    busy = false
+end
 
-LoopAsync(50, function()
-    ExecuteInGameThread(function()
-        local ok, err = pcall(step)
-        if not ok then
-            local f = io.open(bridgeDir .. "/error.txt", "w")
-            if f then f:write(tostring(err)) f:close() end
+local loopKind = "none"
+if type(LoopInGameThreadAfterFrames) == "function" and EngineTickAvailable then
+    if pcall(LoopInGameThreadAfterFrames, 1, frame) then loopKind = "frames" end
+end
+if loopKind == "none" and type(LoopInGameThreadWithDelay) == "function" then
+    if pcall(LoopInGameThreadWithDelay, 16, frame) then loopKind = "delay" end
+end
+if loopKind == "none" then
+    loopKind = "async"
+    local queued = false
+    local function run()
+        frame()
+        queued = false
+    end
+    LoopAsync(33, function()
+        if not queued then
+            queued = true
+            ExecuteInGameThread(run)
         end
+        return false
     end)
-    return false
-end)
+end
 
-print("[Hyperboi] bridge up at " .. bridgeDir .. "\n")
+print("[Hyperboi] bridge up at " .. bridgeDir .. " (" .. loopKind .. ")\n")
