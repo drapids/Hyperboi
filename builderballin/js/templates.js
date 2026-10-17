@@ -20,7 +20,7 @@ function blank() {
   m.meta.name = 'Untitled map';
   make(m, 'spawn', [0, 0, 0], { p: { mode: 'float', speedMin: 3000, speedMax: 3000 } });
   make(m, 'marble_line', [5000, 0, 800], { p: { count: 5, spacing: 4800, rise: 300, mode: 'float' } });
-  make(m, 'finish', [34000, 0, 3000], { size: [12000, 12000, 12000] });
+  make(m, 'finish', [34000, 0, 3000], { p: { size: 1 } });
   make(m, 'kill', [15000, 0, -40000], { size: [200000, 200000, 2000] });
   return m;
 }
@@ -39,7 +39,7 @@ function hop() {
   make(m, 'marble_ring', [80000, 30000, 7500], { p: { count: 12, radius: 9000, wobble: 1500, waves: 3, color: 'yellow', mode: 'float' } });
   make(m, 'marble_spiral', [80000, 30000, 9500], { p: { count: 16, radius: 4600, turn: 32, rise: 1100, color: 'magenta', mode: 'float' } });
   make(m, 'marble_line', [86000, 34000, 27500], { rot: [0, 35, 0], p: { count: 6, spacing: 5200, rise: -400, color: 'mint', mode: 'drift' } });
-  make(m, 'finish', [116000, 54000, 25000], { rot: [0, 35, 0], size: [14000, 14000, 14000] });
+  make(m, 'finish', [116000, 54000, 25000], { rot: [0, 35, 0], p: { size: 1 } });
   make(m, 'kill', [60000, 25000, -40000], { size: [300000, 300000, 2000] });
   make(m, 'light', [80000, 30000, 16000], { color: '#ffb0ff', p: { intensity: 400000, radius: 40000 } });
   return m;
@@ -48,7 +48,7 @@ function hop() {
 function downhill() {
   const m = blankMap();
   m.meta.name = 'Downhill';
-  m.meta.description = 'Built the way the real stages are: a wooden track, a spawner running ahead of you throwing marbles down it, and rings at the end of a kicker.';
+  m.meta.description = 'Built the way the real stages are: a wooden track, a spawner running ahead of you throwing marbles down it, and the Dominus at the end of a kicker.';
   m.meta.difficulty = 'Medium';
   m.meta.gems = { diamond: 20, emerald: 26, gold: 34, steel: 48, rock: 70 };
   const wood = { width: 9000, thickness: 400, walls: 1500 };
@@ -64,7 +64,7 @@ function downhill() {
   });
   make(m, 'checkpoint', [50000, 30000, -5500], { size: [9000, 9000, 6000] });
   make(m, 'marble_line', [50000, 78000, -8200], { rot: [0, 90, 0], p: { count: 4, spacing: 5000, rise: 700, mode: 'float', color: 'yellow' } });
-  make(m, 'finish', [50000, 104000, -4500], { rot: [0, 90, 0], size: [15000, 15000, 15000] });
+  make(m, 'finish', [50000, 104000, -4500], { rot: [0, 90, 0], p: { size: 1 } });
   make(m, 'g_pillar', [22000, 16000, -48000]);
   make(m, 'g_pillar', [64000, 38000, -50000]);
   make(m, 'g_block', [-14000, 0, -6000], { rot: [0, 0, -90], scale: [10, 10, 10] });
@@ -89,7 +89,7 @@ function fever() {
   make(m, 'marble_ring', [92000, 0, 6000], { p: { count: 14, radius: 11000, wobble: 2000, waves: 2, color: 'yellow', mode: 'float' } });
   make(m, 'marble_spiral', [92000, 0, 8000], { p: { count: 18, radius: 5000, turn: 30, rise: 1200, color: 'magenta', mode: 'float' }, anim: { spin: { axis: 'world-up', speed: 12 } } });
   make(m, 'gravity', [92000, 0, 18000], { size: [30000, 30000, 30000], p: { scale: 0.35 } });
-  make(m, 'finish', [92000, 0, 36000], { rot: [-90, 0, 0], size: [14000, 14000, 14000] });
+  make(m, 'finish', [92000, 0, 36000], { rot: [-90, 0, 0], p: { size: 1 } });
   make(m, 'kill', [50000, 0, -40000], { size: [300000, 300000, 2000] });
   make(m, 'light', [42000, 0, 9000], { color: '#9dffca', p: { intensity: 400000, radius: 40000 } });
   make(m, 'light', [92000, 0, 20000], { color: '#ff8165', p: { intensity: 400000, radius: 40000 } });
@@ -97,8 +97,8 @@ function fever() {
 }
 
 export const TEMPLATES = [
-  { name: 'Blank', blurb: 'A start, a few marbles and the finish rings. Build from there.', make: blank },
+  { name: 'Blank', blurb: 'A start, a few marbles and the Dominus. Build from there.', make: blank },
   { name: 'Marble hop', blurb: 'Floating marbles all the way. The easiest kind of map to make.', make: hop },
-  { name: 'Downhill', blurb: 'Like the real stages: wooden track, a spawner throwing marbles, a kicker into the rings.', make: downhill },
+  { name: 'Downhill', blurb: 'Like the real stages: wooden track, a spawner throwing marbles, a kicker into the Dominus.', make: downhill },
   { name: 'Fever lab', blurb: 'Slow motion drifters, a spinning spiral, low gravity and a trigger gate.', make: fever }
 ];

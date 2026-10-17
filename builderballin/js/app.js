@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { TransformControls } from '../vendor/TransformControls.js';
-import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams, GEMS, GEM, MARBLE_R, M, marblePoints, MODE_INFO, pickGem, speedRange } from './pieces.js';
+import { PIECES, PIECE, CATS, GLAZES, ZONE_COLORS, localParts, defaultParams, GEMS, GEM, MARBLE_R, M, marblePoints, MODE_INFO, pickGem, speedRange, DOMINUS } from './pieces.js';
 import { makeSky, makeEnvironment, gemMaterial, MARBLE_GEO, woodMaterial, finishRings, playerFigure, arrowMesh, MOON_DIR } from './look.js';
 import { blankMap, newObject, uid, flatten, exportMap, importMap, validate, blankAnim, MOVE_DEFAULT, SPIN_DEFAULT, SWING_DEFAULT, BLINK_DEFAULT, DIFFICULTIES, GEM_NAMES, axisVector } from './mapfile.js';
 import { axesFromRot, toThree, fromThree, scaleToThree, scaleFromThree, quatFromRot, rotFromQuat, quatFromAxes, add } from './ue.js';
@@ -178,7 +178,7 @@ const SEL_EDGE = new THREE.LineBasicMaterial({ color: '#5fc8ff', transparent: tr
 const SEL_RING = new THREE.MeshBasicMaterial({ color: '#5fc8ff', transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide });
 let thumbMode = false;
 const SEL_SHELL = new THREE.MeshBasicMaterial({ color: '#5fc8ff', side: THREE.BackSide, transparent: true, opacity: 0.85, depthWrite: false });
-const fixedScale = (piece) => ['marker', 'decor', 'marble', 'marbles', 'spawner'].includes(piece.kind);
+const fixedScale = (piece) => ['marker', 'decor', 'marble', 'marbles', 'spawner', 'dominus'].includes(piece.kind);
 
 let hatchTex = null;
 function hatch() {
@@ -367,6 +367,20 @@ function buildVisual(obj, ghost = false) {
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map((m) => toThree(m.pos))), new THREE.LineDashedMaterial({ color: '#dddaff', dashSize: 600, gapSize: 500, transparent: true, opacity: ghost ? 0.3 : 0.55 }));
       line.computeLineDistances();
       root.add(line);
+    }
+  } else if (piece.kind === 'dominus') {
+    const sz = Math.max(0.05, obj.p?.size || 1);
+    const d = finishRings(ghost);
+    d.scale.setScalar((DOMINUS.reach * sz) / 48);
+    root.add(d);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(DOMINUS.reach * sz * 0.22, 0), new THREE.MeshStandardMaterial({ color: '#ffd23a', emissive: '#ffb000', emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.25, transparent: ghost, opacity: ghost ? 0.5 : 1 }));
+    core.userData.spin = 0.8;
+    root.add(core);
+    if (!ghost && !thumbMode) {
+      const lbl = labelSprite('Dominus', '#2a7cff');
+      lbl.position.y = DOMINUS.reach * sz * 1.25;
+      lbl.userData.label = true;
+      root.add(lbl);
     }
   } else if (piece.kind === 'spawner') {
     const prm = { ...defaultParams(piece), ...obj.p };
@@ -743,7 +757,7 @@ function pickables(solidOnly) {
     if (!root.visible) continue;
     const piece = PIECE[obj(id)?.piece];
     if (!piece) continue;
-    if (solidOnly && ['zone', 'marker', 'decor', 'marble', 'marbles', 'spawner'].includes(piece.kind)) continue;
+    if (solidOnly && ['zone', 'marker', 'decor', 'marble', 'marbles', 'spawner', 'dominus'].includes(piece.kind)) continue;
     root.traverse((c) => {
       if (c.isMesh && !c.userData.label && !c.userData.selShell) out.push(c);
     });

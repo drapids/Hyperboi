@@ -1,4 +1,4 @@
-import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R, speedRange } from './pieces.js';
+import { PIECE, defaultParams, localParts, pieceColor, initialScale, marblePoints, GEM, MARBLE_R, speedRange, DOMINUS } from './pieces.js';
 import { axesFromRot, rotFromAxes, applyAxes, composeAxes, add, hadamard } from './ue.js';
 
 export const FORMAT = 'builderballin';
@@ -119,6 +119,13 @@ export function flatten(map) {
       });
       continue;
     }
+    if (piece.kind === 'dominus') {
+      const sz = Math.max(0.05, (o.p && o.p.size) || 1);
+      build.parts.push({ ...common, kind: 'bp', path: DOMINUS.path, pos: o.pos.slice(), rot: o.rot.slice(), scale: [sz, sz, sz], color: null, ice: false, hidden: false, collide: false, dominus: true });
+      const r = DOMINUS.reach * sz;
+      build.zones.push({ ...common, type: 'finish', pos: o.pos.slice(), rot: o.rot.slice(), ext: [r, r, r], params: {}, sphere: r });
+      continue;
+    }
     if (piece.kind === 'spawner') {
       const prm = { ...defaultParams(piece), ...o.p };
       build.spawners.push({ ...common, pos: o.pos.slice(), rot: o.rot.slice(), interval: prm.interval, spread: prm.spread, ...spawnerSpeed(o.p, prm), angle: prm.angle, max: prm.max, mode: prm.mode, channel: (prm.channel || '').trim(), color: prm.color, gems: gemList(prm.color) });
@@ -225,7 +232,7 @@ export function validate(map) {
   const count = (id) => map.objects.filter((o) => o.piece === id).length;
   if (!count('spawn')) issues.push({ level: 'bad', text: 'Add a Start so the game knows where to drop you.', fix: 'spawn' });
   if (count('spawn') > 1) issues.push({ level: 'warn', text: 'There are several Starts. Only the first one is used.' });
-  if (!count('finish')) issues.push({ level: 'bad', text: 'Add finish rings so runs can end.', fix: 'finish' });
+  if (!count('finish')) issues.push({ level: 'bad', text: 'Add a Dominus so runs can end.', fix: 'finish' });
   const kinds = map.objects.map((o) => PIECE[o.piece].kind);
   if (!kinds.some((k) => k === 'marble' || k === 'marbles' || k === 'spawner')) issues.push({ level: 'warn', text: 'No marbles yet. Floors hurt in Hyperballin, so you need marbles to ride.', fix: 'marble_line', cat: 'marbles' });
   const rollers = map.objects.filter((o) => (PIECE[o.piece].kind === 'spawner' || PIECE[o.piece].kind.startsWith('marble')) && (o.p.mode ?? PIECE[o.piece].params.find((x) => x.key === 'mode')?.def) === 'roll');

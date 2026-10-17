@@ -10,6 +10,7 @@ export const GEMS = [
   { id: 'mint', name: 'Mint', surface: '#9dffca', deep: '#002b79', glow: '#00100d', mat: '/Game/Assets/Materials/MI_GemBasic3', odds: 0.093 },
   { id: 'feather', name: 'Feather', surface: '#ece8df', deep: '#9a958c', glow: '#000000', mat: '/Game/Marble_Materials_4K/Materials/MI_Marble_01', odds: 0, stone: true }
 ];
+export const DOMINUS = { path: '/Game/Assets/Dominus/scene/StaticMeshes/BP_Dominus', reach: 3000 };
 export const GEM = Object.fromEntries(GEMS.map((g) => [g.id, g]));
 const CYCLE = ['coral', 'lime', 'yellow', 'magenta', 'mint'];
 
@@ -225,7 +226,7 @@ export const PIECES = [
   { id: 'track_pad', cat: 'track', name: 'Wide deck', kind: 'solid', mat: 'wood', color: '#a8703f', size: [40000, 40000, 400], desc: 'Big flat wooden deck' },
 
   { id: 'spawn', cat: 'play', name: 'Start', kind: 'marker', marker: 'spawn', color: '#5fc8ff', desc: 'Where you start. You get dropped onto a marble here, like the game does', params: [{ ...len('speedMin', 'Start speed, slowest', 0, 30000, 10000, 100), unit: 'm/s', pairMax: 'speedMax' }, { ...len('speedMax', 'Start speed, fastest', 0, 30000, 10000, 100), unit: 'm/s', pairMin: 'speedMin' }, colorParam('random'), modeParam('roll')] },
-  { id: 'finish', cat: 'play', name: 'Finish rings', kind: 'zone', zone: 'finish', size: [12000, 12000, 12000], rings: true, desc: 'Fly through the rings to end the run' },
+  { id: 'finish', cat: 'play', name: 'Dominus', kind: 'dominus', desc: 'The finish from the game. Touch it to end the run', params: [num('size', 'Size', 0.25, 10, 1, 0.05)] },
   { id: 'checkpoint', cat: 'play', name: 'Checkpoint', kind: 'zone', zone: 'checkpoint', size: [6000, 6000, 6000], desc: 'Respawn here after a fall', params: [num('order', 'Order', 1, 99, 1)] },
   { id: 'kill', cat: 'play', name: 'Kill zone', kind: 'zone', zone: 'kill', size: [100000, 100000, 2000], desc: 'Sends you back to your last checkpoint' },
   { id: 'bounce', cat: 'play', name: 'Bounce pad', kind: 'zone', zone: 'bounce', size: [3000, 3000, 800], desc: 'Launches you straight up', params: [{ ...len('power', 'Power', 500, 30000, 6000, 100), unit: 'm/s' }, { key: 'keep', label: 'Keep sideways speed', type: 'bool', def: true }], pad: true },

@@ -580,6 +580,7 @@ end
 
 local function inZone(z, p)
     local d = { p[1] - z.cur[1], p[2] - z.cur[2], p[3] - z.cur[3] }
+    if z.sphere then return d[1] * d[1] + d[2] * d[2] + d[3] * d[3] <= (z.sphere + 120) ^ 2 end
     local A = z.curAxes
     for k = 1, 3 do
         local l = d[1] * A[k][1] + d[2] * A[k][2] + d[3] * A[k][3]
