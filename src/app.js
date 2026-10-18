@@ -930,11 +930,15 @@ function renderMaps() {
     })
     .join('');
   $$('[data-play]', box).forEach((b) =>
-    b.addEventListener('click', () => {
-      if (link !== 'live') return toast('Get into a level first', false);
-      if (live && live.ver !== info.modVersion) return toast('Restart the game first so it loads the new mod', false);
-      window.hb.event('map_load', b.dataset.play);
-      toast('Loading map');
+    b.addEventListener('click', async () => {
+      try {
+        const r = await window.hb.maps.play(b.dataset.play);
+        if (r.launched) toast('Opening Hyperballin. The map loads right after the main menu', true);
+        else if (live && live.ver !== info.modVersion) toast('Restart the game so it picks up the new mod, then press Play again', false);
+        else toast('Loading map. If you are in the menu it opens the level for you', true);
+      } catch (e) {
+        toast(e.message || "Couldn't start the map", false);
+      }
     })
   );
   $$('[data-remove]', box).forEach((b) =>

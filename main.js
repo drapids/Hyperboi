@@ -5,7 +5,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 
 const EXE = 'project_garden-Win64-Shipping.exe';
-const MOD_VERSION = '8';
+const MOD_VERSION = '9';
 const LAUNCHER = 'project_garden.exe';
 
 let win = null;
@@ -391,11 +391,21 @@ function pickAsset(releases) {
   return null;
 }
 
+function luaVersion(file) {
+  try {
+    const m = fs.readFileSync(file, 'utf8').match(/"ver=(\d+)"/);
+    return m ? +m[1] : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function syncMod() {
   const h = hookLayout(store.gameDir);
   if (!h || !h.ue4ss || !exists(h.mods)) return false;
   const src = path.join(hookSource(), 'Hyperboi', 'Scripts');
   const dst = path.join(h.mod, 'Scripts');
+  if (luaVersion(path.join(dst, 'main.lua')) > luaVersion(path.join(src, 'main.lua'))) return false;
   let changed = false;
   try {
     fs.mkdirSync(dst, { recursive: true });
@@ -776,6 +786,22 @@ ipcMain.handle('maps:remove', (_e, file) => {
   const d = mapsDir();
   if (d && /^[^\\/]+\.hbmap$/i.test(file) && exists(path.join(d, file))) fs.unlinkSync(path.join(d, file));
   return listMaps();
+});
+ipcMain.handle('maps:play', (_e, file) => {
+  const h = hookLayout(store.gameDir);
+  if (!h || !exists(h.mod)) throw new Error('Install the hook first');
+  syncMod();
+  fs.mkdirSync(h.bridge, { recursive: true });
+  const id = Date.now();
+  fs.writeFileSync(path.join(h.bridge, 'play.txt'), `${id}|${file}|${Math.floor(id / 1000)}`);
+  if (!gameRunning) {
+    const root = path.resolve(store.gameDir, '..', '..', '..');
+    const launcher = path.join(root, LAUNCHER);
+    const exe = exists(launcher) ? launcher : path.join(store.gameDir, EXE);
+    spawn(exe, [], { cwd: path.dirname(exe), detached: true, stdio: 'ignore' }).unref();
+    return { launched: true };
+  }
+  return { launched: false };
 });
 ipcMain.handle('maps:folder', () => {
   const d = mapsDir();

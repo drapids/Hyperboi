@@ -35,8 +35,10 @@ function json.decode(s)
         local parts = {}
         local start = i
         while true do
+            local j = s:find('["\\]', i)
+            if not j then err("unterminated string") end
+            i = j
             local c = s:byte(i)
-            if not c then err("unterminated string") end
             if c == 34 then
                 parts[#parts + 1] = s:sub(start, i - 1)
                 i = i + 1

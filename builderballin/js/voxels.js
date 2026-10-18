@@ -255,11 +255,13 @@ export function reduceGrid(g, palette, k) {
 
 export function assetParts(a) {
   const out = [];
+  if (a.kind === 'mesh') return out;
   const b = a.boxes;
   for (let i = 0; i + 6 < b.length; i += 7) out.push({ kind: 'shape', shape: 'cube', pos: [b[i], b[i + 1], b[i + 2]], rot: [0, 0, 0], scale: [b[i + 3] / 100, b[i + 4] / 100, b[i + 5] / 100], color: a.palette[b[i + 6]] });
   return out;
 }
 
 export function assetCount(a) {
+  if (a.kind === 'mesh') return (a.sections || []).length;
   return Math.floor((a.boxes || []).length / 7);
 }

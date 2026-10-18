@@ -16,7 +16,7 @@ local GEM_ODDS = {
 }
 local FEATHER = "/Game/Marble_Materials_4K/Materials/MI_Marble_01"
 local CAPSULE = { 38, 38, 90 }
-local BATCH = 12
+local BUDGET = 0.008
 
 local ctx
 local cur = nil
@@ -214,6 +214,68 @@ local function applyLook(actor, comp, part)
     end
 end
 
+local B64 = {}
+do
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    for i = 1, 64 do B64[chars:byte(i)] = i - 1 end
+end
+
+local function unb64(s)
+    local out = {}
+    local n = 0
+    local char = string.char
+    for i = 1, #s, 4 do
+        local a, b, c, d = s:byte(i, i + 3)
+        local va, vb, vc, vd = B64[a] or 0, B64[b] or 0, c and B64[c], d and B64[d]
+        local x = (va << 18) | (vb << 12) | ((vc or 0) << 6) | (vd or 0)
+        n = n + 1
+        if vd then
+            out[n] = char((x >> 16) & 255, (x >> 8) & 255, x & 255)
+        elseif vc then
+            out[n] = char((x >> 16) & 255, (x >> 8) & 255)
+        else
+            out[n] = char((x >> 16) & 255)
+        end
+    end
+    return table.concat(out)
+end
+
+local function decodeSection(sec, two)
+    local P = unb64(sec.p)
+    local N = unb64(sec.n)
+    local I = unb64(sec.i)
+    local b = sec.b
+    local sx, sy, sz = (b[4] - b[1]) / 65535, (b[5] - b[2]) / 65535, (b[6] - b[3]) / 65535
+    local verts, norms, tris = {}, {}, {}
+    local count = #P // 6
+    local unpack = string.unpack
+    for k = 0, count - 1 do
+        local x, y, z = unpack("<I2I2I2", P, k * 6 + 1)
+        local nx, ny, nz = unpack("<i1i1i1", N, k * 3 + 1)
+        verts[k + 1] = { X = b[1] + x * sx, Y = b[2] + y * sy, Z = b[3] + z * sz }
+        norms[k + 1] = { X = nx / 127, Y = ny / 127, Z = nz / 127 }
+    end
+    local tc = #I // 2
+    for k = 0, tc - 1 do
+        tris[k + 1] = unpack("<I2", I, k * 2 + 1)
+    end
+    if two then
+        for k = 1, count do
+            local v, nn = verts[k], norms[k]
+            verts[count + k] = { X = v.X, Y = v.Y, Z = v.Z }
+            norms[count + k] = { X = -nn.X, Y = -nn.Y, Z = -nn.Z }
+        end
+        for k = 1, tc, 3 do
+            tris[tc + k] = tris[k] + count
+            tris[tc + k + 1] = tris[k + 2] + count
+            tris[tc + k + 2] = tris[k + 1] + count
+        end
+    end
+    return verts, tris, norms
+end
+
+local IDENTITY = { Translation = { X = 0, Y = 0, Z = 0 }, Rotation = { X = 0, Y = 0, Z = 0, W = 1 }, Scale3D = { X = 1, Y = 1, Z = 1 } }
+
 local function spawnPart(world, part)
     local loc = W(part.pos)
     local r = part.rot or { 0, 0, 0 }
@@ -240,6 +302,43 @@ local function spawnPart(world, part)
                     if valid(mi) then safe(function() mi:SetVectorParameterValue(FName("Color"), hexColor(part.color, true)) end) end
                 end
             end
+        end
+        applyLook(actor, comp, part)
+    elseif part.kind == "procmesh" then
+        local smaClass = cls("/Script/Engine.StaticMeshActor")
+        local pmc = cls("/Script/ProceduralMeshComponent.ProceduralMeshComponent")
+        if not smaClass or not pmc or not part.sec then return nil end
+        actor = spawnActor(world, smaClass, loc, rot)
+        if not actor then return nil end
+        local root = meshComp(actor)
+        if root then safe(function() root:SetMobility(2) end) end
+        local comp = safe(function() return actor:AddComponentByClass(pmc, false, IDENTITY, false) end)
+        if not valid(comp) then
+            safe(function() actor:K2_DestroyActor() end)
+            log("couldn't add a mesh component, the game may not have procedural meshes")
+            return nil
+        end
+        local ok, v, t, n = pcall(decodeSection, part.sec, part.two)
+        if not ok then
+            safe(function() actor:K2_DestroyActor() end)
+            log("bad mesh data: " .. tostring(v))
+            return nil
+        end
+        local made = safe(function() comp:CreateMeshSection_LinearColor(0, v, t, n, {}, {}, {}, part.collide ~= false) return true end)
+        if not made then
+            safe(function() actor:K2_DestroyActor() end)
+            log("couldn't build a mesh section")
+            return nil
+        end
+        if part.collide ~= false then
+            safe(function() comp:SetCollisionProfileName(FName("BlockAll"), true) end)
+        else
+            safe(function() comp:SetCollisionEnabled(0) end)
+        end
+        local base = asset("/Engine/BasicShapes/BasicShapeMaterial")
+        if base then
+            local mi = safe(function() return comp:CreateDynamicMaterialInstance(0, base, FName("None")) end)
+            if valid(mi) then safe(function() mi:SetVectorParameterValue(FName("Color"), hexColor(part.color or "#9a9a96", true)) end) end
         end
         applyLook(actor, comp, part)
     elseif part.kind == "bp" then
@@ -430,6 +529,58 @@ local function teleport(ch, pos, yaw, keepVel)
     end
 end
 
+local function clearLoading()
+    if not cur or not cur.loadText then return end
+    for _, a in ipairs(cur.loadText) do
+        if valid(a) then safe(function() a:K2_DestroyActor() end) end
+    end
+    cur.loadText = nil
+end
+
+local function textActor(pos, yaw, text, size, color)
+    local c = cls("/Script/Engine.TextRenderActor")
+    if not c then return nil end
+    local a = spawnActor(cur.worldObj, c, W(pos), { Pitch = 0, Yaw = yaw, Roll = 0 })
+    if not a then return nil end
+    local comp = safe(function() return a.TextRender end)
+    if valid(comp) then
+        safe(function() comp:SetMobility(2) end)
+        safe(function() comp:K2_SetText(FText(text)) end)
+        safe(function() comp:SetWorldSize(size) end)
+        safe(function() comp:SetHorizontalAlignment(1) end)
+        safe(function() comp:SetVerticalAlignment(1) end)
+        safe(function() comp:SetTextRenderColor(color) end)
+    end
+    return a
+end
+
+local function showLoading()
+    if not cur or not cur.holdAt then return end
+    local total = cur.loadTotal or 1
+    local left = #cur.queue + #cur.mqueue
+    local pct = math.floor((1 - left / math.max(1, total)) * 100 + 0.5)
+    local label = ("%d%%   %d / %d"):format(pct, total - left, total)
+    if cur.loadText and cur.loadLabel == label then return end
+    local y = (cur.spawn.yaw or 0) * D
+    local f = { math.cos(y), math.sin(y) }
+    local h = cur.holdAt
+    local at = { h[1] + f[1] * 2600, h[2] + f[2] * 2600, h[3] + 120 }
+    local face = (cur.spawn.yaw or 0) + 180
+    if not cur.loadText then
+        cur.loadText = {}
+        cur.loadText[1] = textActor({ at[1], at[2], at[3] + 260 }, face, "LOADING", 260, { R = 255, G = 255, B = 255, A = 255 })
+        cur.loadText[2] = textActor({ at[1], at[2], at[3] + 20 }, face, tostring(cur.name), 150, { R = 95, G = 200, B = 255, A = 255 })
+        cur.loadText[3] = textActor({ at[1], at[2], at[3] - 180 }, face, label, 110, { R = 200, G = 196, B = 255, A = 255 })
+    else
+        local a = cur.loadText[3]
+        if valid(a) then
+            local comp = safe(function() return a.TextRender end)
+            if valid(comp) then safe(function() comp:K2_SetText(FText(label)) end) end
+        end
+    end
+    cur.loadLabel = label
+end
+
 local function setMsg(text)
     if cur then
         cur.msg = text
@@ -479,6 +630,7 @@ function M.unload(silent)
     for _, sp in ipairs(cur.spawners) do for _, m in ipairs(sp.live) do killMarble(m) end end
     killMarble(cur.startMarble)
     if valid(cur.finishText) then safe(function() cur.finishText:K2_DestroyActor() end) end
+    clearLoading()
     restoreMovement()
     ctx.setKillboxes(false)
     local ch = ctx.getChar()
@@ -572,6 +724,12 @@ function M.load(file)
     end
     lastStatus = "loading"
     ctx.setKillboxes(true)
+    cur.loadTotal = #cur.queue + #cur.mqueue
+    local sp = cur.spawn.pos or { 0, 0, 0 }
+    cur.holdAt = { sp[1], sp[2], sp[3] + 9000 }
+    cur.hold = W(cur.holdAt)
+    cur.hold.Z = cur.hold.Z + CAPSULE[3] + 10
+    teleport(ch, cur.holdAt, cur.spawn.yaw or 0, false)
     log("loading " .. cur.name .. " with " .. #cur.queue .. " parts, " .. #cur.mqueue .. " marbles and " .. #cur.spawners .. " spawners")
     return true
 end
@@ -767,7 +925,8 @@ local function spawnBatch(world)
         end
         if #cur.mqueue > 0 then return end
     end
-    while #cur.queue > 0 and n < BATCH do
+    local started = os.clock()
+    while #cur.queue > 0 and (n < 4 or os.clock() - started < BUDGET) do
         local part = table.remove(cur.queue, 1)
         local actor = spawnPart(world, part)
         if actor then
@@ -783,6 +942,8 @@ local function spawnBatch(world)
     if #cur.queue == 0 then
         lastStatus = "loaded"
         log(("loaded %s: %d spawned, %d failed"):format(cur.name, #cur.spawned, cur.failed or 0))
+        clearLoading()
+        cur.hold = nil
         local ch = ctx.getChar()
         applyRules()
         if valid(ch) then dropAt(ch, cur.spawn.pos, cur.spawn.yaw) end
@@ -814,8 +975,10 @@ function M.tick()
             local cm = ctx.getCmc()
             if valid(cm) then safe(function() cm.Velocity = { X = 0, Y = 0, Z = 0 } end) end
         end
-        if now(world) - cur.t0 < 1.5 then return end
+        showLoading()
+        if now(world) - cur.t0 < 1.0 then return end
         spawnBatch(world)
+        if cur and cur.loadText then showLoading() end
         return
     end
     cur.frame = cur.frame + 1
@@ -852,13 +1015,11 @@ function M.tick()
         local nxt = nextMap(cur.file)
         if nxt then
             local back = cur.returnTo
-            local here = safe(function() return ch:K2_GetActorLocation() end)
             log("on to the next map: " .. tostring(nxt.name ~= "" and nxt.name or nxt.file))
             cur.returnTo = nil
             M.load(nxt.file)
             if cur then
                 cur.returnTo = back
-                cur.hold = here and { X = here.X, Y = here.Y, Z = here.Z } or nil
                 cur.msg = "Next up: " .. tostring(nxt.name ~= "" and nxt.name or nxt.file)
                 cur.msgAt = os.clock()
             end

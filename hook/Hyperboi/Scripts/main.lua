@@ -541,7 +541,7 @@ end
 local function writeState(o, status)
     local L = {}
     table.insert(L, "status=" .. status)
-    table.insert(L, "ver=8")
+    table.insert(L, "ver=9")
     table.insert(L, "tick=" .. tick)
     table.insert(L, "clock=" .. string.format("%.2f", os.clock()))
     if o.char then
@@ -581,6 +581,37 @@ local function writeState(o, status)
     if f then
         f:write(table.concat(L, "\n"))
         f:close()
+    end
+end
+
+local playPath = bridgeDir .. "/play.txt"
+local lastPlay = nil
+local playWant = nil
+local function checkPlay()
+    local raw = readFile(playPath)
+    if raw then
+        local id, file, at = raw:match("^(%d+)|([^|\r\n]+)|?(%d*)")
+        if id and id ~= lastPlay then
+            local first = lastPlay == nil
+            lastPlay = id
+            local stamp = tonumber(at)
+            local fresh = stamp and math.abs(os.time() - stamp) < 120
+            if not first or fresh then playWant = { file = file, giveUp = os.clock() + 90 } end
+        end
+    elseif lastPlay == nil then
+        lastPlay = ""
+    end
+    if not playWant then return end
+    if os.clock() > playWant.giveUp then
+        playWant = nil
+        return
+    end
+    local ch = safe(function() return FindFirstOf("BP_ThirdPersonCharacter_C") end)
+    if valid(ch) then
+        maps.load(playWant.file)
+        playWant = nil
+    elseif menu.play(playWant.file) then
+        playWant = nil
     end
 end
 
@@ -640,6 +671,7 @@ local function step()
     end
     applyKillboxes()
     menu.tick()
+    if tick % 4 == 0 then checkPlay() end
     if tick % 20 == 0 then menu.scan() end
 
     if tick % 5 == 0 then

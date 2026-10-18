@@ -12,9 +12,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Unbounded:wght@800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&text=%E3%83%93%E3%83%AB%E3%83%80%E3%83%BC%E3%83%9C%E3%83%BC%E3%83%AA%E3%83%B3&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="js/loader.js" defer></script>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
 <body>
+<div class="loader" id="loader" aria-hidden="true"><canvas id="loaderCanvas" width="192" height="120"></canvas><div class="loader-brand"><span class="brand-name">BUILDERBALLIN'</span><span class="brand-kana" lang="ja">ビルダーボーリン</span></div><div class="loader-line"><i id="loaderBar"></i></div></div>
 <div class="app" id="app">
   <header class="bar" data-enter>
     <div class="brand">
@@ -22,24 +24,17 @@
       <span class="brand-text"><span class="brand-name">BUILDERBALLIN'</span><span class="brand-kana" lang="ja">ビルダーボーリン</span></span>
     </div>
     <input id="mapName" class="mapname" spellcheck="false" aria-label="Map name">
-    <div class="bar-group">
-      <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
-      <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
-    </div>
-    <div class="seg" id="toolSeg" role="radiogroup" aria-label="Tool">
-      <button data-tool="select" title="Select (V)">Select</button>
-      <button data-tool="translate" title="Move (W)">Move</button>
-      <button data-tool="rotate" title="Rotate (E)">Rotate</button>
-      <button data-tool="scale" title="Scale (R)">Scale</button>
-      <span class="seg-thumb"></span>
-    </div>
     <div class="spacer"></div>
-    <button class="btn ghost" id="helpBtn">Shortcuts</button>
-    <button class="btn ghost" id="newBtn">New</button>
-    <button class="btn ghost" id="openBtn">Open</button>
-    <button class="btn ghost" id="importBtn">Import</button>
-    <button class="btn ghost" id="settingsBtn">Map settings</button>
-    <button class="btn primary" id="exportBtn">Export map</button>
+    <div class="bar-group menu-group">
+      <button class="btn ghost" id="homeBtn" title="Templates, your maps and game setup (Ctrl+N)">Home</button>
+      <button class="btn ghost" id="openBtn" title="Open a map (Ctrl+O)">Open</button>
+      <button class="btn ghost" id="importBtn">Import</button>
+      <button class="btn ghost" id="settingsBtn">Settings</button>
+      <button class="icon-btn" id="helpBtn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h1M10 10h1M14 10h1M18 10h0M7 14h10"/></svg></button>
+    </div>
+    <div id="gameSlot" class="game-slot"></div>
+    <button class="btn line" id="exportBtn">Export</button>
+    <button class="btn primary play-game" id="playGameBtn" hidden><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>Play in game</button>
     <input type="file" id="fileInput" accept=".hbmap,.json,application/json" hidden>
     <input type="file" id="importInput" multiple hidden>
   </header>
@@ -53,6 +48,19 @@
 
   <main class="stage" id="stage">
     <canvas id="view"></canvas>
+    <div class="toolbar" data-enter>
+      <div class="bar-group">
+        <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+        <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+      </div>
+      <div class="seg" id="toolSeg" role="radiogroup" aria-label="Tool">
+        <button data-tool="select" title="Select (V)">Select</button>
+        <button data-tool="translate" title="Move (W)">Move</button>
+        <button data-tool="rotate" title="Rotate (E)">Rotate</button>
+        <button data-tool="scale" title="Scale (R)">Scale</button>
+        <span class="seg-thumb"></span>
+      </div>
+    </div>
     <div class="viewbar" data-enter>
       <button data-view="persp" class="on">3D</button>
       <button data-view="top">Top</button>

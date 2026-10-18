@@ -6,7 +6,7 @@
 
 A trainer for [Hyperballin](https://itch.io/search?q=hyperballin), the free marble parkour game on itch.io. Hyperboi hooks into the game while it runs and gives you god mode, no cooldowns, infinite air jumps, physics sliders, warp spots, a run timer and a live view of the game's own variables, so you can practice the hard parts of a course over and over.
 
-It also comes with **Builderballin**, a map editor that runs in your browser, so you can build your own courses and play them in the real game.
+It also comes with **Builderballin**, a map editor for building your own courses and playing them in the real game. It's its own app now, over at [drapids/Builderballin](https://github.com/drapids/Builderballin), and it can launch maps into the game without Hyperboi. Both share the same map loader and map list.
 
 Hyperballin is single player. Hyperboi only touches your own game on your own PC.
 
@@ -112,7 +112,7 @@ In Hyperballin you jump from marble to marble, and touching any floor hurts you.
 
 1. Press **Export map** in Builderballin to download the `.hbmap` file.
 2. In Hyperboi, open **Maps** and drop the file in.
-3. Load into any level in the game and press **Play**. The map is built 22 km up in the sky, out of the way of the real stages, and you're dropped onto a marble at its Start.
+3. Press **Play**. If the game is closed it opens it, if you're in the main menu it opens the level for you, and if you're already in a level it loads right there. You get a loading screen while it builds. The map is built 22 km up in the sky, out of the way of the real stages, and you're dropped onto a marble at its Start.
 
 Touch the Dominus and you go on to the next map in your list. After the last one you go into the game's next level, the same way the Dominus works in the real stages.
 

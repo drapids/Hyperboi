@@ -9,7 +9,9 @@ import { evalAnim } from './anim.js';
 import { MESHES } from './meshes.js';
 import { animate, fadeIn, SPRINGS, Spring, springCurve } from './spring.js';
 import { TEMPLATES } from './templates.js';
-import { loadSource, buildAsset, DEFAULTS, ACCEPT } from './importers.js';
+import { loadSource, buildAsset, DEFAULTS, ACCEPT, unb64 } from './importers.js';
+import { openSearch } from './search.js';
+import { createHome, createGame } from './home.js';
 import { assetCount } from './voxels.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -29,6 +31,7 @@ const ICON = {
   pause: '<path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/>'
 };
 
+const desk = window.bbDesktop || null;
 const STORE_KEY = 'builderballin:map';
 const LIB_KEY = 'builderballin:imports';
 const PREFS_KEY = 'builderballin:prefs';
@@ -51,6 +54,7 @@ const state = {
   history: [],
   future: [],
   importRef: null,
+  filePath: null,
   openSecs: JSON.parse(localStorage.getItem('builderballin:secs') || '{}')
 };
 
@@ -375,7 +379,71 @@ function instMat({ ghost = false, faded = false, ice = false } = {}) {
   return m;
 }
 const IMPORT_EDGE = new THREE.LineBasicMaterial({ color: '#b9b2f2', transparent: true, opacity: 0.28 });
+const meshMats = new Map();
+const sectionGeo = new WeakMap();
+function sectionGeometry(sec) {
+  if (sectionGeo.has(sec)) return sectionGeo.get(sec);
+  const qp = new Uint16Array(unb64(sec.p).buffer);
+  const qn = new Int8Array(unb64(sec.n).buffer);
+  const idx = new Uint16Array(unb64(sec.i).buffer);
+  const b = sec.b;
+  const n = qp.length / 3;
+  const pos = new Float32Array(n * 3);
+  const nor = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const x = b[0] + (qp[i * 3] / 65535) * (b[3] - b[0]);
+    const y = b[1] + (qp[i * 3 + 1] / 65535) * (b[4] - b[1]);
+    const z = b[2] + (qp[i * 3 + 2] / 65535) * (b[5] - b[2]);
+    pos[i * 3] = x;
+    pos[i * 3 + 1] = z;
+    pos[i * 3 + 2] = y;
+    nor[i * 3] = qn[i * 3] / 127;
+    nor[i * 3 + 1] = qn[i * 3 + 2] / 127;
+    nor[i * 3 + 2] = qn[i * 3 + 1] / 127;
+  }
+  const tri = new Uint32Array(idx.length);
+  for (let i = 0; i < idx.length; i += 3) {
+    tri[i] = idx[i];
+    tri[i + 1] = idx[i + 2];
+    tri[i + 2] = idx[i + 1];
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setIndex(new THREE.BufferAttribute(tri, 1));
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  sectionGeo.set(sec, g);
+  return g;
+}
+function meshMat(color, two, { ghost = false, faded = false } = {}) {
+  const key = `${color}|${two}|${ghost}|${faded}`;
+  if (meshMats.has(key)) return meshMats.get(key);
+  const m = new THREE.MeshStandardMaterial({ color, roughness: 0.82, envMapIntensity: 0.6, side: two ? THREE.DoubleSide : THREE.FrontSide });
+  if (ghost || faded) {
+    m.transparent = true;
+    m.opacity = ghost ? 0.5 : 0.28;
+    m.depthWrite = !ghost;
+  }
+  meshMats.set(key, m);
+  return m;
+}
 function assetMesh(a, opts = {}) {
+  if (a.kind === 'mesh') {
+    const g = new THREE.Group();
+    for (const sec of a.sections) {
+      const m = new THREE.Mesh(sectionGeometry(sec), meshMat(a.palette[sec.c] || '#9a9a96', a.twoSided, opts));
+      m.castShadow = !opts.ghost && !opts.faded;
+      m.receiveShadow = true;
+      g.add(m);
+    }
+    const sz = a.size || [100, 100, 100];
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(sz[0], sz[2], sz[1])), IMPORT_EDGE);
+    e.position.copy(toThree([0, 0, sz[2] / 2]));
+    e.userData.edge = true;
+    g.add(e);
+    return g;
+  }
   const g = new THREE.Group();
   const n = assetCount(a);
   if (!n) return g;
@@ -828,6 +896,7 @@ function snapshot() {
 }
 
 function commit(label) {
+  state.freshBoot = false;
   state.history.push(state.lastSnap);
   if (state.history.length > 120) state.history.shift();
   state.future = [];
@@ -879,9 +948,9 @@ function scheduleSave() {
   saveTimer = setTimeout(() => {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(state.map));
-      $('#savedText').textContent = 'Saved';
+      $('#savedText').textContent = state.filePath ? 'Autosaved' : 'Saved';
     } catch {
-      $('#savedText').textContent = 'Not saved';
+      $('#savedText').textContent = desk ? 'Too big to autosave, Ctrl+S' : 'Too big to autosave, export it';
     }
   }, 500);
 }
@@ -1469,7 +1538,7 @@ function toast(text, bad = false) {
   }, 2200);
 }
 
-function modal({ title, body, foot, wide = false, onMount }) {
+function modal({ title, body, foot, wide = false, onMount, onClose }) {
   const root = $('#modalRoot');
   const bd = html(`<div class="backdrop"><div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2></div><div class="modal-body"></div><div class="modal-foot"></div></div></div>`);
   const m = $('.modal', bd);
@@ -1480,8 +1549,12 @@ function modal({ title, body, foot, wide = false, onMount }) {
   root.appendChild(bd);
   animate(bd, { opacity: [0, 1] }, { spring: SPRINGS.gentle });
   animate(m, { opacity: [0, 1], transform: ['translateY(14px) scale(0.97)', 'none'] }, { spring: SPRINGS.bouncy });
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     document.removeEventListener('keydown', onKey, true);
+    if (onClose) onClose();
     const a = bd.animate({ opacity: [1, 0] }, { duration: 160, easing: 'ease-in', fill: 'forwards' });
     m.animate({ transform: ['none', 'translateY(8px) scale(0.98)'] }, { duration: 160, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = () => bd.remove();
@@ -1540,10 +1613,11 @@ function renderImportTray(anim) {
   const inMap = Object.entries(state.map?.assets || {}).map(([ref, asset]) => ({ ref, asset }));
   const seen = new Set(inMap.map((x) => x.ref));
   const list = [...inMap, ...library.filter((x) => !seen.has(x.ref))];
-  box.innerHTML = `<button class="import-drop" id="importPick"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4"/></svg><b>Bring in a file</b><span>PNG, Minecraft build, .vox or a 3D model. You can also just drop it on the map.</span></button>${list
-    .map(({ ref, asset }) => `<button class="piece ${state.brush === 'import' && state.importRef === ref ? 'on' : ''}" data-id="import" data-ref="${esc(ref)}" title="${esc(asset.name)}">${asset.thumb ? `<img alt="" src="${asset.thumb}">` : '<div class="thumb-wait"></div>'}<span>${esc(asset.name)}</span><i class="tag">${assetCount(asset)}</i></button>`)
+  box.innerHTML = `<button class="import-drop" id="importPick"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4"/></svg><b>Bring in a file</b><span>PNG, Minecraft build, .vox, a 3D model or a Source .bsp map. You can also just drop it on the map.</span></button><button class="import-find" id="importFind"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>Find models online</button>${list
+    .map(({ ref, asset }) => `<button class="piece ${state.brush === 'import' && state.importRef === ref ? 'on' : ''}" data-id="import" data-ref="${esc(ref)}" title="${esc(asset.name)}">${asset.thumb ? `<img alt="" src="${asset.thumb}">` : '<div class="thumb-wait"></div>'}<span>${esc(asset.name)}</span><i class="tag">${asset.kind === 'mesh' ? 'Mesh' : assetCount(asset)}</i></button>`)
     .join('')}${list.length ? '' : '<p class="hint import-empty">Nothing imported yet. Pixel art, a Minecraft house, a model off Sketchfab, all of it turns into blocks that show up in game.</p>'}`;
   $('#importPick', box).addEventListener('click', () => $('#importInput').click());
+  $('#importFind', box).addEventListener('click', () => searchModal());
   $$('.piece', box).forEach((b, i) => {
     b.addEventListener('click', () => {
       if (state.brush === 'import' && state.importRef === b.dataset.ref) return setBrush(null);
@@ -1552,7 +1626,7 @@ function renderImportTray(anim) {
     });
     b.addEventListener('mouseenter', () => {
       const a = assetFor(b.dataset.ref);
-      if (a) $('#trayNote').textContent = `${a.name}. ${assetCount(a)} blocks, ${a.size.map((v) => round2(v / M)).join(' × ')} m.`;
+      if (a) $('#trayNote').textContent = `${a.name}. ${a.kind === 'mesh' ? `${a.tris.toLocaleString()} triangles` : `${assetCount(a)} blocks`}, ${a.size.map((v) => Math.round(v / M)).join(' × ')} m.`;
     });
     b.addEventListener('mouseleave', () => updateTrayNote());
     if (anim) animate(b, { opacity: [0, 1], transform: ['translateY(10px) scale(0.96)', 'none'] }, { spring: SPRINGS.bouncy, delay: i * 22 });
@@ -1568,12 +1642,16 @@ function showImports() {
 }
 
 function importStats(a) {
+  if (a.kind === 'mesh') {
+    const dimsM = a.size.map((v) => (v / M >= 100 ? Math.round(v / M) : round2(v / M))).join(' × ');
+    return { n: a.sections.length, text: `${a.tris.toLocaleString()} triangles in ${a.sections.length} part${a.sections.length === 1 ? '' : 's'}, ${a.palette.length} colours, ${dimsM} m`, heavy: a.tris * (a.twoSided ? 2 : 1) > 200000 };
+  }
   const n = assetCount(a);
-  const dims = a.size.map((v) => round2(v / M)).join(' × ');
-  return { n, text: `${n.toLocaleString()} blocks in game, ${a.palette.length} colours, ${dims} m`, heavy: n > 3000 };
+  const dims = a.size.map((v) => (v / M >= 100 ? Math.round(v / M) : round2(v / M))).join(' × ');
+  return { n, text: `${n.toLocaleString()} blocks in game, ${a.palette.length} colours, ${dims} m`, heavy: n > (a.source === 'level' ? 9000 : 3000) };
 }
 
-async function importModal(files) {
+async function importModal(files, nameHint) {
   let src;
   const t = setTimeout(() => toast('Reading the file'), 400);
   try {
@@ -1584,7 +1662,9 @@ async function importModal(files) {
     return;
   }
   clearTimeout(t);
-  const opt = { ...DEFAULTS[src.kind], ...(src.kind === 'minecraft' || src.kind === 'vox' ? { colors: 64 } : {}) };
+  if (nameHint && /^(scene|model|untitled|[0-9a-f]{20,})$/i.test(src.name)) src.name = nameHint;
+  const opt = { ...DEFAULTS[src.kind] };
+  if (src.kind === 'model' && src.levelish) Object.assign(opt, { level: true, res: 128, size: 60000, solid: false, quality: 85 });
   const body = html(`<div class="imp"><div class="imp-view"><canvas></canvas><div class="imp-busy" hidden>Working on it</div></div><div class="imp-side"><div class="imp-opts"></div><p class="imp-stat"></p></div></div>`);
   let asset = null;
   let busy = false;
@@ -1603,7 +1683,7 @@ async function importModal(files) {
       try {
         asset = buildAsset(src, opt);
         const st = importStats(asset);
-        stat.textContent = st.text + (st.heavy ? '. That is a lot of parts, the game takes longer to load it. Lower the detail or colours if it lags.' : '.');
+        stat.textContent = st.text + (st.heavy ? (asset.kind === 'mesh' ? '. That is a lot of triangles, it could lag in game. Turn the quality down if it does.' : '. That is a lot of parts, the game takes longer to load it. Lower the detail or colours if it lags.') : '.');
         stat.classList.toggle('warn', st.heavy);
         if (preview) preview.show(asset);
       } catch (e) {
@@ -1662,15 +1742,44 @@ async function importModal(files) {
       opts.appendChild(count('Colours', 'colors', 2, 64));
       opts.appendChild(tick('Fill the inside', 'solid'));
     } else {
-      opts.appendChild(count('Detail', 'res', 8, 128));
-      opts.appendChild(metres('Size', 'size', 10, 2000, 5));
-      opts.appendChild(count('Colours', 'colors', 2, 64));
-      opts.appendChild(row('Up is', chipsEl([['y', 'Y'], ['z', 'Z']], opt.up, (v) => {
-        opt.up = v;
+      const isMap = src.kind === 'bsp';
+      if (!isMap)
+        opts.appendChild(checkRow('This is a whole map', opt.level, (v) => {
+          Object.assign(opt, v ? { level: true, res: 128, size: 60000, solid: false, quality: 85 } : { level: false, res: 48, size: 8000, solid: true, quality: 70 });
+          fill();
+          later();
+        }));
+      opts.appendChild(row('Build as', chipsEl([['mesh', 'Real shape'], ['blocks', 'Blocks']], opt.build, (v) => {
+        opt.build = v;
+        fill();
         later();
       })));
-      opts.appendChild(tick('Fill the inside', 'solid'));
-      opts.appendChild(html('<p class="hint">Models get turned into blocks so they show up in game. More detail looks closer to the model but makes more parts. For an .obj, drop its .mtl and textures in with it to keep the colours.</p>'));
+      if (opt.build === 'mesh') {
+        const q = sliderRow({ label: 'Quality', value: opt.quality, min: 0, max: 100, step: 1, unit: '%', onInput: (v) => {
+          opt.quality = Math.round(v);
+          later();
+        }, onCommit: () => {} });
+        opts.appendChild(q);
+      } else opts.appendChild(count('Detail', 'res', isMap ? 32 : 8, isMap || opt.level ? 256 : 128, isMap ? 8 : 1));
+      if (isMap)
+        opts.appendChild(row('Scale', chipsEl([['1', '1x'], ['4', '4x'], ['8', 'Marble size'], ['14', '14x']], String(opt.scale), (v) => {
+          opt.scale = +v;
+          later();
+        })));
+      else opts.appendChild(metres('Size', 'size', 10, opt.level ? 3000 : 1000, 5));
+      opts.appendChild(count('Colours', 'colors', 2, 64));
+      if (!isMap)
+        opts.appendChild(row('Up is', chipsEl([['y', 'Y'], ['z', 'Z']], opt.up, (v) => {
+          opt.up = v;
+          later();
+        })));
+      if (opt.build === 'mesh') opts.appendChild(tick('Show both sides', 'twoSided'));
+      else opts.appendChild(tick(isMap || opt.level ? 'Fill closed rooms' : 'Fill the inside', 'solid'));
+      const tip = opt.build === 'mesh'
+        ? `The actual shape goes into the game, triangles and all, with real collision. Quality 100% keeps every triangle, lower merges them so big maps load faster.${isMap ? ' Props are left out.' : ''}`
+        : 'Turned into coloured blocks. Lighter on the game and looks like voxel art.';
+      const scaleTip = isMap ? ` At 1x the halls are thinner than a marble, Marble size makes it ${Math.round((src.longest * 1.905 * 8) / M)} m across.` : opt.level ? ' Size is the longest side, 600 m makes halls wide enough for marbles.' : '';
+      opts.appendChild(html(`<p class="hint">${tip}${scaleTip}</p>`));
     }
   };
   fill();
@@ -1739,7 +1848,7 @@ function importPreview(cv) {
     const dir = framed ? cam.position.clone().sub(ctl.target) : new THREE.Vector3(1, 0.75, 1.15);
     framed = true;
     ctl.target.copy(c);
-    cam.position.copy(c).add(dir.normalize().multiplyScalar((rad / Math.sin((35 * Math.PI) / 360)) * 0.9));
+    cam.position.copy(c).add(dir.normalize().multiplyScalar((rad / Math.sin((35 * Math.PI) / 360)) * 1.12));
     cam.near = rad / 100;
     cam.far = rad * 100;
     cam.updateProjectionMatrix();
@@ -1777,7 +1886,7 @@ function updateTrayNote(hover) {
   const note = $('#trayNote');
   if (p && p.kind === 'import') {
     const a = assetFor(state.importRef);
-    note.textContent = a ? `${a.name}. ${assetCount(a)} blocks. Click to place, it scales like any other piece.` : 'Imported build.';
+    note.textContent = a ? `${a.name}. Click to place, it scales like any other piece.` : 'Imported build.';
   } else if (p) note.textContent = p.kind === 'game' ? `${p.name}. ${p.desc ? p.desc + '. ' : ''}${MODELS[p.id] ? 'Shape and size come straight from the game files.' : `The real one spawns in game. The box here is its size${p.approx ? ', roughly' : ''}.`}` : `${p.name}. ${p.desc || ''}`;
   else note.textContent = 'Floors hurt in Hyperballin, marbles don\'t. Pick a piece, click to place it, drag to paint. Right-drag orbits, middle-drag pans.';
 }
@@ -2019,7 +2128,7 @@ function renderMapPanel(ins) {
   ins.appendChild(html(`<div class="insp-head"><div class="insp-kind">Map</div><h2 class="insp-title-static">${esc(m.meta.name)}</h2></div>`));
   const issues = validate(m);
   const iss = html('<div class="issues"></div>');
-  if (!issues.length) iss.appendChild(html('<div class="issue good"><span class="dot"></span><span>Ready to play. Export it and drop it into Hyperboi.</span><span></span></div>'));
+  if (!issues.length) iss.appendChild(html(`<div class="issue good"><span class="dot"></span><span>${desk ? 'Ready to play. Press Play in game.' : 'Ready to play. Export it and drop it into Hyperboi.'}</span><span></span></div>`));
   for (const i of issues) {
     const el = html(`<div class="issue ${i.level}"><span class="dot"></span><span>${esc(i.text)}</span><span></span></div>`);
     if (i.fix) {
@@ -2122,7 +2231,7 @@ function renderSelPanel(ins, sel) {
       }
       if (piece.kind === 'import') {
         const a = assetFor(one.p.ref);
-        if (a) tf.push(html(`<p class="hint">${assetCount(a).toLocaleString()} blocks in game. ${a.size.map((v, i) => round2((v * Math.abs(one.scale[i])) / M)).join(' × ')} m at this scale.</p>`));
+        if (a) tf.push(html(`<p class="hint">${a.kind === 'mesh' ? `${a.tris.toLocaleString()} triangles in ${a.sections.length} part${a.sections.length === 1 ? '' : 's'}` : `${assetCount(a).toLocaleString()} blocks`} in game. ${a.size.map((v, i) => Math.round((v * Math.abs(one.scale[i])) / M)).join(' × ')} m at this scale.</p>`));
       }
     } else {
       tf.push(vecRow('Size', one.scale.map((s) => (s * 100) / M), { step: state.snap ? state.grid / 4 / M : 1, unit: 'm', axes: ['L', 'W', 'H'], onInput: (i, v) => {
@@ -2677,24 +2786,6 @@ function exportModal() {
   });
 }
 
-function newModal() {
-  const body = html(`<div style="display:grid;gap:12px"><p class="hint" style="margin-top:-6px">Your current map is replaced. Export it first if you want to keep it.</p><div class="templates">${TEMPLATES.map((t, i) => `<button class="template" data-t="${i}"><b>${esc(t.name)}</b><span>${esc(t.blurb)}</span></button>`).join('')}</div></div>`);
-  modal({
-    title: 'Start a new map',
-    body,
-    wide: true,
-    onMount: (el, close) => {
-      $$('[data-t]', el).forEach((b) =>
-        b.addEventListener('click', () => {
-          close();
-          loadMap(TEMPLATES[+b.dataset.t].make(), { intro: true });
-          toast(`Started from ${TEMPLATES[+b.dataset.t].name}`);
-        })
-      );
-    }
-  });
-}
-
 function helpModal() {
   const keys = [
     ['Place the chosen piece', 'Click'],
@@ -2718,7 +2809,11 @@ function helpModal() {
     ['Group', 'Ctrl + G'],
     ['Undo / redo', 'Ctrl + Z / Ctrl + Shift + Z'],
     ['Zoom to selection', 'F'],
-    ['Export', 'Ctrl + S'],
+    [desk ? 'Save' : 'Export', 'Ctrl + S'],
+    ...(desk ? [['Save as', 'Ctrl + Shift + S']] : []),
+    ['Open a map', 'Ctrl + O'],
+    ['Home', 'Ctrl + N'],
+    ['Find models online', 'Ctrl + Shift + F'],
     ['Select everything', 'Ctrl + A'],
     ['Snap on or off', 'Hold Ctrl while dragging']
   ];
@@ -2726,6 +2821,7 @@ function helpModal() {
 }
 
 function openFile(file) {
+  state.filePath = null;
   const reader = new FileReader();
   reader.onload = () => {
     try {
@@ -2805,7 +2901,17 @@ window.addEventListener('keydown', (e) => {
     select(state.map.objects.map((o) => o.id));
   } else if (mod && k === 's') {
     e.preventDefault();
-    exportModal();
+    if (desk) saveDesk(e.shiftKey);
+    else exportModal();
+  } else if (mod && k === 'o') {
+    e.preventDefault();
+    openAny();
+  } else if (mod && k === 'n') {
+    e.preventDefault();
+    home.open();
+  } else if (mod && k === 'f' && e.shiftKey) {
+    e.preventDefault();
+    searchModal();
   } else if (mod && k === 'g') {
     e.preventDefault();
     if (!state.selected.size) return;
@@ -2870,9 +2976,30 @@ function wire() {
   });
   $('#settingsBtn').addEventListener('click', settingsModal);
   $('#exportBtn').addEventListener('click', exportModal);
-  $('#newBtn').addEventListener('click', newModal);
+  $('#homeBtn').addEventListener('click', () => home.open());
   $('#helpBtn').addEventListener('click', helpModal);
-  $('#openBtn').addEventListener('click', () => $('#fileInput').click());
+  $('#openBtn').addEventListener('click', () => openAny());
+  if (desk) {
+    document.body.classList.add('desktop');
+    $('#playGameBtn').hidden = false;
+    $('#playGameBtn').addEventListener('click', () => game.play());
+    game.mount($('#gameSlot'));
+    desk.on('openFile', (f) => {
+      home.close();
+      openPath(f);
+    });
+    desk.on('grab', (g) => {
+      if (g.state === 'start') toast(`Downloading ${g.name}`);
+      else if (g.state === 'failed') toast(`${g.name} didn't download`, true);
+      else if (g.state === 'done') {
+        const m = $('.find-modal');
+        if (m) m.closest('.backdrop')?.remove();
+        importModal(g.files.map((f) => new File([f.data], f.name)));
+      }
+    });
+  } else {
+    $('#exportBtn').classList.replace('line', 'primary');
+  }
   $('#fileInput').addEventListener('change', (e) => {
     if (e.target.files[0]) openFile(e.target.files[0]);
     e.target.value = '';
@@ -2981,6 +3108,155 @@ function enterUI() {
   });
 }
 
+function mapThumb(map, w = 480, h = 300) {
+  if (!mapThumb.r) {
+    const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    r.setPixelRatio(1);
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.shadowMap.enabled = false;
+    const sc2 = new THREE.Scene();
+    sc2.background = new THREE.Color('#2a2650');
+    sc2.fog = new THREE.Fog('#2a2650', 400000, 1400000);
+    sc2.environment = makeEnvironment(r);
+    sc2.add(new THREE.HemisphereLight('#e4defe', '#3a3466', 1.5));
+    const dl = new THREE.DirectionalLight('#ffe6cc', 2.2);
+    dl.position.set(-1, 2, 1.4);
+    sc2.add(dl);
+    mapThumb.r = r;
+    mapThumb.scene = sc2;
+    mapThumb.cam = new THREE.PerspectiveCamera(32, w / h, 100, 5e6);
+  }
+  const { r, scene: sc2, cam } = mapThumb;
+  r.setSize(w, h, false);
+  cam.aspect = w / h;
+  const group = new THREE.Group();
+  thumbMode = true;
+  for (const o of map.objects) {
+    if (o.piece === 'kill' || !PIECE[o.piece]) continue;
+    const v = buildVisual(o);
+    applyBase(o, v);
+    v.traverse((c) => {
+      if (c.userData.label || c.userData.zoneBox || c.userData.edge) c.visible = false;
+    });
+    group.add(v);
+  }
+  thumbMode = false;
+  sc2.add(group);
+  group.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(group);
+  if (box.isEmpty()) box.set(new THREE.Vector3(-10000, -10000, -10000), new THREE.Vector3(10000, 10000, 10000));
+  const c = box.getCenter(new THREE.Vector3());
+  const rad = Math.max(8000, box.getSize(new THREE.Vector3()).length() / 2);
+  cam.position.copy(c).add(new THREE.Vector3(-0.75, 0.62, 0.9).normalize().multiplyScalar((rad / Math.sin((cam.fov * Math.PI) / 360)) * 0.6));
+  cam.near = rad / 200;
+  cam.far = rad * 40;
+  cam.updateProjectionMatrix();
+  cam.lookAt(c);
+  r.render(sc2, cam);
+  const url = r.domElement.toDataURL('image/jpeg', 0.84);
+  sc2.remove(group);
+  return url;
+}
+
+function countMap(map) {
+  const fb = flatten(map);
+  const rolling = fb.spawners.reduce((n, sp) => n + (sp.max || 0), 0);
+  return { marbles: fb.marbles.length, rolling, total: fb.marbles.length + rolling, spawners: fb.spawners.length, parts: fb.parts.length };
+}
+
+function rememberPath() {
+  try {
+    if (state.filePath) localStorage.setItem('builderballin:path', state.filePath);
+    else localStorage.removeItem('builderballin:path');
+  } catch {}
+}
+
+function startTemplate(id) {
+  const t = TEMPLATES.find((x) => x.id === id) || TEMPLATES[0];
+  state.filePath = null;
+  rememberPath();
+  loadMap(t.make(), { intro: true });
+  if (id !== 'blank') toast(`Started from ${t.name}`);
+}
+
+async function openPath(p) {
+  try {
+    const r = await desk.file.open(p);
+    if (!r) return false;
+    loadMap(importMap(r.text), { intro: true });
+    state.filePath = r.path;
+    rememberPath();
+    toast(`Opened ${state.map.meta.name}`);
+    return true;
+  } catch (e) {
+    toast(e.message || "Couldn't open that.", true);
+    return false;
+  }
+}
+
+function openAny() {
+  if (desk) return openPath(null);
+  return new Promise((resolve) => {
+    const input = $('#fileInput');
+    const once = () => {
+      input.removeEventListener('change', once);
+      resolve(!!input.files.length);
+    };
+    input.addEventListener('change', once);
+    input.click();
+  });
+}
+
+async function saveDesk(asNew = false) {
+  try {
+    const p = await desk.file.save(exportMap(state.map), state.map.meta.name, asNew ? null : state.filePath);
+    if (!p) return;
+    state.filePath = p;
+    rememberPath();
+    toast('Saved');
+    $('#savedText').textContent = 'Saved to file';
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function searchModal(q = '') {
+  openSearch({ modal, html, esc, toast, desk, animate, SPRINGS, importFiles: (files, name) => importModal(files, name) }, q);
+}
+
+function savedName() {
+  if (state.freshBoot) return '';
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return '';
+    const m = JSON.parse(raw);
+    return m && m.meta && m.objects && m.objects.length ? m.meta.name : '';
+  } catch {
+    return '';
+  }
+}
+
+const home = createHome({
+  html,
+  esc,
+  toast,
+  animate,
+  SPRINGS,
+  desk,
+  TEMPLATES,
+  countMap,
+  mapThumb: (m, w, h) => mapThumb(m, w, h),
+  startTemplate,
+  openAny,
+  openPath,
+  pickImport: () => $('#importInput').click(),
+  openSearch: () => searchModal(),
+  openSetup: () => (game ? game.openSetup() : Promise.resolve(null)),
+  savedName
+});
+const game = desk ? createGame({ html, esc, toast, modal, desk, validate, exportMap, state }) : null;
+
 function boot() {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
@@ -3003,13 +3279,23 @@ function boot() {
     if (saved) map = importMap(saved);
   } catch {}
   if (map && map.objects.length && !map.objects.some((o) => ['marble', 'marbles', 'spawner'].includes(PIECE[o.piece].kind)) && map.oldScale) map = null;
-  if (!map) map = TEMPLATES[0].make();
+  const fresh = !map;
+  state.freshBoot = fresh;
+  if (desk && map) {
+    try {
+      state.filePath = localStorage.getItem('builderballin:path') || null;
+    } catch {}
+  }
+  if (!map) map = TEMPLATES.find((t) => t.id === 'run').make();
   enterUI();
-  loadMap(map, { intro: true });
+  loadMap(map, { intro: !fresh });
   setTool('select');
   requestAnimationFrame(() => setTool('select'));
   requestAnimationFrame(loop);
-  window.__bb = { state, flatten, exportMap, camera, controls, roots, scene, THREE, camFly, frameObjects, select, loadMap, TEMPLATES, setBrush };
+  window.__bb = { state, flatten, exportMap, camera, controls, roots, scene, THREE, camFly, frameObjects, select, loadMap, TEMPLATES, setBrush, home, importModal, searchModal, mapThumb };
+  const reveal = () => home.open({ first: true });
+  if (window.__loaderDone) window.__loaderDone(reveal);
+  else reveal();
 }
 
 boot();

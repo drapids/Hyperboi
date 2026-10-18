@@ -165,6 +165,13 @@ export function flatten(map) {
       else build.parts.push({ ...common, kind: 'light', intensity: prm.intensity, radius: prm.radius, pos: o.pos.slice(), rot: [0, 0, 0], scale: [1, 1, 1], color: o.color });
       continue;
     }
+    if (piece.kind === 'import' && map.assets && map.assets[o.p.ref] && map.assets[o.p.ref].kind === 'mesh') {
+      const a = map.assets[o.p.ref];
+      a.sections.forEach((sec, i) => {
+        build.parts.push({ ...common, id: `${o.id}:m${i}`, kind: 'procmesh', pos: o.pos.slice(), rot: o.rot.slice(), scale: o.scale.slice(), color: a.palette[sec.c] || '#9a9a96', sec: { b: sec.b, p: sec.p, n: sec.n, i: sec.i }, two: !!a.twoSided, ice: o.look.ice, hidden: !o.look.visible, collide: o.look.collide });
+      });
+      continue;
+    }
     const parts = piece.kind === 'import' ? (map.assets && map.assets[o.p.ref] ? assetParts(map.assets[o.p.ref]) : []) : localParts(o);
     parts.forEach((lp, i) => {
       const la = axesFromRot(lp.rot);

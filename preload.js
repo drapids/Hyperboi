@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('hb', {
     pick: () => ipcRenderer.invoke('maps:pick'),
     add: (paths) => ipcRenderer.invoke('maps:add', paths),
     remove: (f) => ipcRenderer.invoke('maps:remove', f),
+    play: (f) => ipcRenderer.invoke('maps:play', f),
     folder: () => ipcRenderer.invoke('maps:folder'),
     builder: () => ipcRenderer.invoke('maps:builder'),
     log: () => ipcRenderer.invoke('maps:log'),

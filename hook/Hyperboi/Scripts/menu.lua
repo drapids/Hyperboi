@@ -391,6 +391,12 @@ function M.openPicker()
     openPicker()
 end
 
+function M.play(file)
+    if not valid(menu) then return false end
+    playMap(file)
+    return true
+end
+
 function M.init(c)
     ctx = c
     os.remove(ctx.bridgeDir .. "/menu_log.txt")
